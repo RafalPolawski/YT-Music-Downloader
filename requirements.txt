@@ -1,0 +1,5 @@
+ytmusicapi # For interacting with YT Music library & authentication
+yt-dlp      # The powerful downloader engine
+mutagen      # Required for embedding metadata (Artist, Album) in audio files
+rich         # For the modern UI and progress bars
+Pillow       # For image resizing and optimization

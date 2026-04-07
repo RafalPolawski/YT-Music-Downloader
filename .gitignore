@@ -1,0 +1,27 @@
+# --- Authentication & Credentials ---
+# NEVER commit these files to a public repository!
+# They contain your Google session data.
+oauth.json
+headers.json
+cookies.txt
+cookies_clean.txt
+
+# --- Media & Download Data ---
+# All downloaded music goes here
+downloads/
+# Download archives (used to track which songs are already downloaded)
+.archives/
+archive_*.txt
+
+# --- Python Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv
+.env
+
+# --- OS Generated Files ---
+.DS_Store
+Thumbs.db
+sync.log
