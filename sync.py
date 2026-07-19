@@ -632,6 +632,21 @@ class Downloader:
             # Clean up only this track's temp/thumbnail files
             self.cleanup_track(out_dir, stem)
 
+        # Generate .m3u8 playlist file to preserve track order
+        try:
+            m3u8_path = out_dir / f"{self.syncer.get_safe_filename(p_title)}.m3u8"
+            ext = self.config.get("yt_dlp", {}).get("audio_format", "opus")
+            
+            with open(m3u8_path, "w", encoding="utf-8") as f:
+                f.write("#EXTM3U\n")
+                for expected_name in expected_names:
+                    f_name = f"{expected_name}.{ext}"
+                    if (out_dir / f_name).exists():
+                        f.write(f"{f_name}\n")
+            logger.debug(f"Generated playlist file: '{m3u8_path.name}'")
+        except Exception as e:
+            logger.error(f"Failed to generate .m3u8 for '{p_title}': {e}")
+
         # Mirroring & summary
         self.syncer.run_mirroring(p_title, tracks)
         summary = (
