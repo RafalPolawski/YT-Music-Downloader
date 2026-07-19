@@ -463,6 +463,7 @@ class Downloader:
             "writethumbnail": True,      # kept as thumbnail fallback
             "socket_timeout": 30,
             "retries": 10,
+            "sleep_requests": self.config.get("yt_dlp", {}).get("sleep_requests", 1), # Adds a small 1s delay to prevent IP bans
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
@@ -550,20 +551,42 @@ class Downloader:
             success = False
             last_err = ""
 
-            for url in urls_to_try:
+            # Prevent multithreading write collisions on the cookie file
+            thread_cookie = None
+            if ydl_opts.get("cookiefile") == "cookies.txt":
+                import tempfile
+                import shutil
+                import os
+                fd, thread_cookie = tempfile.mkstemp(suffix=".txt")
+                os.close(fd)
                 try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([url])
-                    if f_path.exists():
-                        success = True
-                        break
-                except Exception as e:
-                    raw_err = str(e).split("\n")[0]
-                    last_err = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_err).strip()
-                    if url != urls_to_try[-1]:
-                        logger.debug(
-                            f"Primary URL failed for '{t['title']}', trying fallback..."
-                        )
+                    shutil.copy("cookies.txt", thread_cookie)
+                    ydl_opts["cookiefile"] = thread_cookie
+                except Exception:
+                    pass
+
+            try:
+                for url in urls_to_try:
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            ydl.download([url])
+                        if f_path.exists():
+                            success = True
+                            break
+                    except Exception as e:
+                        raw_err = str(e).split("\n")[0]
+                        last_err = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_err).strip()
+                        if url != urls_to_try[-1]:
+                            logger.debug(
+                                f"Primary URL failed for '{t['title']}', trying fallback..."
+                            )
+            finally:
+                if thread_cookie:
+                    try:
+                        import os
+                        os.remove(thread_cookie)
+                    except Exception:
+                        pass
 
             if not success and last_err:
                 msg = f"[[cyan]{p_title}[/cyan]] '{t['title']}' fail: {last_err}"
@@ -707,7 +730,8 @@ class Downloader:
                         "\n[bold red]Interrupted. Finishing current tasks and exiting...[/bold red]"
                     )
                     executor.shutdown(wait=False, cancel_futures=True)
-                    raise
+                    import os
+                    os._exit(1)
 
         # Final report
         console.print("\n")
@@ -735,5 +759,7 @@ if __name__ == "__main__":
         app.run()
     except KeyboardInterrupt:
         logger.warning("\n[bold red]Interrupted by user.[/bold red]")
+        import os
+        os._exit(1)
     except Exception as e:
         logger.critical(f"Fatal crash: {e}", exc_info=True)
