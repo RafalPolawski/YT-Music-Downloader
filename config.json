@@ -3,20 +3,9 @@
     "download_dir": "downloads",
     "max_workers": 3,
     "mirror_mode": true,
-    "audio_quality": "128",
-    "postprocessor_fallback": true,
+    "audio_quality": "0",
     "yt_dlp": {
         "audio_format": "opus",
-        "auto_update": true,
-        "additional_opts": {
-            "add-metadata": true,
-            "embed-thumbnail": true,
-            "windows-filenames": true,
-            "ignore-errors": false,
-            "no-warnings": true,
-            "retries": 10,
-            "socket-timeout": 30
-
-        }
+        "auto_update": true
     }
 }

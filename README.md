@@ -20,7 +20,7 @@ A high-fidelity Python tool for synchronizing your **YouTube Music** library wit
 -   **🧹 Orphaned File Management**: Remote deletions move local files to a hidden `.deleted/` folder.
 -   **🛡️ Data Integrity**: Validates Ogg Opus structures and auto-repairs corrupted downloads.
 -   **🏷️ Rich Metadata**: Injects high-quality Artist, Album, and Title tags.
--   **🖼️ Optimized Thumbnails**: Resizes covers to **600x600 JPEG** (~60KB) for efficiency.
+-   **🖼️ Optimized Thumbnails**: Fetches covers direct from YTMusic API at **800x800 JPEG** for best quality.
 -   **⚡ High Concurrency**: Multi-threaded playlist indexing and downloads.
 -   **🚫 Collision Resistance**: Smart naming prevents duplicate titles via artist/duration suffixes.
 
@@ -100,7 +100,7 @@ python sync.py
 | `download_dir` | `downloads/` | Final destination for your music library. |
 | `max_workers` | `3` | Number of simultaneous playlist/track downloads. |
 | `mirror_mode` | `true` | Moves orphaned files to `.deleted/` instead of erasing. |
-| `audio_quality` | `128` | Desired bit rate for the `.opus` stream. |
+| `audio_quality` | `0` | Opus VBR quality (`0` = best/max, higher number = lower quality). |
 
 ---
 
