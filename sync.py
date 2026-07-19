@@ -640,7 +640,7 @@ class Downloader:
             with open(m3u8_path, "w", encoding="utf-8") as f:
                 f.write("#EXTM3U\n")
                 for t in tracks:
-                    vid = t["videoId"]
+                    vid = t.get("videoId")
                     if vid in expected_names:
                         f_name = f"{expected_names[vid]}.{ext}"
                         if (out_dir / f_name).exists():
