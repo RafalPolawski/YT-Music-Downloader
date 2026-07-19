@@ -20,6 +20,7 @@ import io
 import re
 import subprocess
 import urllib.request
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -262,6 +263,7 @@ class Syncer:
 
     def get_safe_filename(self, text: str) -> str:
         """Converts strings to Windows-safe filenames using Unicode equivalents."""
+        text = unicodedata.normalize('NFKC', text)
         mapping = {
             ":": "：", "*": "＊", "?": "？", '"': "＂",
             "<": "＜", ">": "＞", "|": "｜", "/": "／", "\\": "＼",
