@@ -72,8 +72,10 @@ pip install -r requirements.txt
 ```
 
 ### 2. Authentication
-1. **Headers**: Run `python3 setup_auth.py` (or `python` on Windows) and follow browser instructions.
-2. **Cookies**: (Optional) For premium content, place a Netscape `cookies.txt` in the root.
+1. **Headers**: Run `python setup_auth.py` and follow browser instructions. This allows reading your YT Music library.
+2. **Age-restricted Content**: The script now **automatically** handles age verification! You no longer need to manually extract `cookies.txt`. Just specify your main browser (e.g., `"chrome"`, `"edge"`, `"firefox"`, `"brave"`) in `config.json` under `cookies_from_browser`.
+   > [!IMPORTANT]
+   > The script extracts cookies **only once at startup**. Chromium browsers (Chrome, Brave, Edge) strictly lock their cookie databases on Windows. **You must completely close your browser for 2 seconds** when running the script. The script will pause and prompt you if the browser is running. Once extraction is complete, you can reopen your browser immediately!
 
 ---
 
@@ -101,6 +103,7 @@ python sync.py
 | `max_workers` | `3` | Number of simultaneous playlist/track downloads. |
 | `mirror_mode` | `true` | Moves orphaned files to `.deleted/` instead of erasing. |
 | `audio_quality` | `0` | Opus VBR quality (`0` = best/max, higher number = lower quality). |
+| `cookies_from_browser`| `chrome` | Extracts age-verification cookies directly from this browser (`chrome`, `edge`, `firefox`, `opera`, `brave`). |
 
 ---
 

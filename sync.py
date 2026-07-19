@@ -93,7 +93,7 @@ class YDLLogger:
         logger.debug(msg)
 
     def error(self, msg):
-        logger.error(msg)
+        logger.debug(msg)
 
 
 class Config:
@@ -116,6 +116,7 @@ class Config:
             "yt_dlp": {
                 "audio_format": "opus",
                 "auto_update": True,
+                "cookies_from_browser": None,
             },
         }
 
@@ -456,6 +457,7 @@ class Downloader:
             "outtmpl": f"{out_dir}/{stem.replace('%', '%%')}.%(ext)s",
             "quiet": True,
             "no_warnings": True,
+            "color": "no_color",
             "logger": YDLLogger(),
             "progress_hooks": [hook],
             "writethumbnail": True,      # kept as thumbnail fallback
@@ -556,7 +558,8 @@ class Downloader:
                         success = True
                         break
                 except Exception as e:
-                    last_err = str(e).split("\n")[0]
+                    raw_err = str(e).split("\n")[0]
+                    last_err = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_err).strip()
                     if url != urls_to_try[-1]:
                         logger.debug(
                             f"Primary URL failed for '{t['title']}', trying fallback..."
@@ -635,6 +638,34 @@ class Downloader:
             return
 
         # Pre-flight: cookies (validate once, cache result)
+        browser = self.config.get("yt_dlp", {}).get("cookies_from_browser")
+        if browser:
+            logger.info(f"Extracting cookies from {browser} (one-time)...")
+            while True:
+                try:
+                    ydl_opts = {
+                        "cookiesfrombrowser": (browser, ),
+                        "cookiefile": "cookies.txt",
+                        "quiet": True,
+                        "no_warnings": True,
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.cookiejar.save()
+                    logger.info(f"Successfully extracted cookies from {browser}!")
+                    break
+                except Exception as e:
+                    err_msg = str(e)
+                    if "Could not copy" in err_msg or "Permission denied" in err_msg or "locked" in err_msg.lower():
+                        console.print(f"\n[bold red]File Lock Error:[/bold red] {browser.capitalize()} is currently running and locking its cookie database.")
+                        console.print(f"[bold yellow]Please close {browser.capitalize()} completely (including system tray), then press Enter to try again...[/bold yellow]")
+                        try:
+                            input()
+                        except KeyboardInterrupt:
+                            return
+                    else:
+                        logger.error(f"Failed to extract cookies from {browser}: {e}")
+                        break
+
         self.validate_cookies()
 
         if not self.auth.initialize():

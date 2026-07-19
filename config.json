@@ -6,6 +6,7 @@
     "audio_quality": "0",
     "yt_dlp": {
         "audio_format": "opus",
-        "auto_update": true
+        "auto_update": true,
+        "cookies_from_browser": "brave"
     }
 }
