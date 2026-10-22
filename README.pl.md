@@ -5,6 +5,13 @@
   Mała aplikacja self-hosted z panelem WWW. Działa w Dockerze na wszystkim: od Mac mini po Raspberry Pi.
 </p>
 
+<p align="center">
+  <a href="https://github.com/RafalPolawski/YT-Music-Downloader/actions/workflows/ci.yml"><img src="https://github.com/RafalPolawski/YT-Music-Downloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/RafalPolawski/YT-Music-Downloader/pkgs/container/yt-music-downloader"><img src="https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
+  <a href="https://github.com/RafalPolawski/YT-Music-Downloader/releases/latest"><img src="https://img.shields.io/github/v/release/RafalPolawski/YT-Music-Downloader?color=8b5cf6" alt="Najnowsze wydanie"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT"></a>
+</p>
+
 <p align="center"><a href="README.md">🇬🇧 English version</a></p>
 
 ---
@@ -276,7 +283,16 @@ wystawiaj portu 8080 do internetu (do zdalnego dostępu użyj VPN, np. Tailscale
 
 Logi: strona **Logs**, `docker compose logs -f` albo `config/logs/ytmd.log`.
 
-**Aktualizacja:** `docker compose pull && docker compose up -d` (ustawienia i stan zostają w `config/`).
+## Aktualizacja
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Ustawienia, połączenie z kontem i stan synchronizacji są w `config/`, więc aktualizacja jest
+bezpieczna. Tagi obrazu: `latest` to najnowsze wydanie, `1` zostaje na wydaniach 1.x, `1.0.0`
+przypina konkretną wersję, a `edge` śledzi gałąź `main`. Zmiany w kolejnych wersjach opisuje
+[changelog](CHANGELOG.md) i [strona wydań](https://github.com/RafalPolawski/YT-Music-Downloader/releases).
 
 ## Bez Dockera
 

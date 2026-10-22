@@ -8,7 +8,7 @@
 <p align="center">
   <a href="https://github.com/RafalPolawski/YT-Music-Downloader/actions/workflows/ci.yml"><img src="https://github.com/RafalPolawski/YT-Music-Downloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/RafalPolawski/YT-Music-Downloader/pkgs/container/yt-music-downloader"><img src="https://img.shields.io/badge/docker-amd64%20%7C%20arm64-2496ED?logo=docker&logoColor=white" alt="Docker"></a>
-  <img src="https://img.shields.io/badge/version-1.0.0-8b5cf6" alt="Version 1.0.0">
+  <a href="https://github.com/RafalPolawski/YT-Music-Downloader/releases/latest"><img src="https://img.shields.io/github/v/release/RafalPolawski/YT-Music-Downloader?color=8b5cf6" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT"></a>
 </p>
 
@@ -281,7 +281,16 @@ and don't expose port 8080 to the internet (use a VPN such as Tailscale for remo
 
 Logs: the **Logs** page, `docker compose logs -f`, or `config/logs/ytmd.log`.
 
-**Updating:** `docker compose pull && docker compose up -d` (your settings and state are kept in `config/`).
+## Updating
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+Settings, the account connection and the sync state live in `config/`, so updates are safe.
+Image tags: `latest` is the newest release, `1` stays on 1.x releases, `1.0.0` pins an exact
+version and `edge` follows the `main` branch. What changed in each version is listed in the
+[changelog](CHANGELOG.md) and on the [releases page](https://github.com/RafalPolawski/YT-Music-Downloader/releases).
 
 ## Running without Docker
 
@@ -310,7 +319,11 @@ python -m pytest
 | `ytmd/db.py` | SQLite state |
 | `ytmd/scheduler.py`, `ytmd/updater.py` | Periodic runs, yt-dlp self-update |
 | `ytmd/web/` | FastAPI backend and the single-page web UI (no build step) |
-| `tests/` | Pytest suite (fake YouTube Music + fake downloader) |
+| `tests/` | Pytest suite: fake YouTube Music, scripted and real yt-dlp runs (no network needed) |
+
+**Releasing:** bump `__version__` in `ytmd/__init__.py`, add a section to `CHANGELOG.md`, then
+push a tag `vX.Y.Z`. GitHub Actions publishes the Docker images and creates the GitHub release
+with the changelog notes.
 
 ## Disclaimer
 

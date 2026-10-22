@@ -1,16 +1,14 @@
 # syntax=docker/dockerfile:1
 # Multi-arch image (linux/amd64, linux/arm64 - e.g. Apple Silicon Mac mini).
 
-ARG PYTHON_VERSION=3.13
-ARG DENO_VERSION=2.9.7
-ARG FFMPEG_VERSION=8.1.2
+# Base image versions are written out (no ARGs) so Dependabot can keep them current.
 
 # yt-dlp needs a JavaScript runtime to solve YouTube's player challenges.
-FROM denoland/deno:bin-${DENO_VERSION} AS deno
+FROM denoland/deno:bin-2.9.7 AS deno
 # Static ffmpeg/ffprobe builds (amd64 + arm64), much smaller than Debian's ffmpeg package.
-FROM mwader/static-ffmpeg:${FFMPEG_VERSION} AS ffmpeg
+FROM mwader/static-ffmpeg:8.1.2 AS ffmpeg
 
-FROM python:${PYTHON_VERSION}-slim
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

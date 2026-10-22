@@ -1,0 +1,39 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting! Please remove anything private (cookies, request headers, tokens) from logs before posting.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown at the bottom of the sidebar in the web UI.
+      placeholder: v1.0.0 · yt-dlp 2026.10.21
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Where does it run?
+      options:
+        - Docker on macOS
+        - Docker on Linux
+        - Docker on Windows
+        - Without Docker
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant lines from the Logs page or `docker compose logs`.
+      render: text

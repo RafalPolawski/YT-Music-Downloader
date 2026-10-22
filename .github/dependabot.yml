@@ -1,0 +1,29 @@
+# Monthly, grouped update PRs. yt-dlp is skipped on purpose: the app updates it at runtime
+# and every image build installs the newest release.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      - dependency-name: yt-dlp
+    groups:
+      python:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
