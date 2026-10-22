@@ -6,7 +6,7 @@
 # yt-dlp needs a JavaScript runtime to solve YouTube's player challenges.
 FROM denoland/deno:bin-2.9.7 AS deno
 # Static ffmpeg/ffprobe builds (amd64 + arm64), much smaller than Debian's ffmpeg package.
-FROM mwader/static-ffmpeg:8.1.2 AS ffmpeg
+FROM mwader/static-ffmpeg:9.0.2-1 AS ffmpeg
 
 FROM python:3.13-slim
 
