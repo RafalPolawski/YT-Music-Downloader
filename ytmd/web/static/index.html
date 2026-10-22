@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YT Music Downloader</title>
+  <meta name="description" content="Keeps local copies of your YouTube Music playlists in sync.">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo" id="brand-logo"></div>
+        <div class="brand-text">
+          <div class="brand-name">YT Music Downloader</div>
+          <div class="brand-sub">playlists → your disk</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-foot">
+        <div class="row"><span class="dot" id="foot-dot"></span><span id="foot-status">Loading…</span>
+          <button class="btn ghost icon theme-btn" id="theme-btn" title="Toggle theme"></button></div>
+        <div class="faint" id="foot-version" style="margin-top:6px"></div>
+      </div>
+    </aside>
+    <main class="main" id="page"></main>
+  </div>
+  <div class="toasts" id="toasts"></div>
+  <div id="modal-root"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

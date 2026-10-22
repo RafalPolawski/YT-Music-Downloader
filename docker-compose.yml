@@ -1,0 +1,27 @@
+# YT Music Downloader - keeps your YouTube Music playlists mirrored to a local folder.
+#
+#   1. Change the music path below (left side of ":/music").
+#   2. docker compose up -d
+#   3. Open http://localhost:8080 and connect your account.
+
+services:
+  yt-music-downloader:
+    image: ghcr.io/rafalpolawski/yt-music-downloader:latest
+    # Prefer building it yourself? Comment out "image" above and uncomment:
+    # build: .
+    container_name: yt-music-downloader
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Warsaw
+      # Files are written as this user/group. Use the output of `id` on the host
+      # (on macOS with Docker Desktop/OrbStack the defaults are fine).
+      PUID: "1000"
+      PGID: "1000"
+      # Optional: protect the web UI with a password (user: admin)
+      # YTMD_WEB_PASSWORD: change-me
+    volumes:
+      - ./config:/config
+      # Your music library - point your Jellyfin/Navidrome/Plex library at the same folder.
+      - ./music:/music

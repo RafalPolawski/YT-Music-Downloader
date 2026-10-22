@@ -1,0 +1,28 @@
+[project]
+name = "yt-music-downloader"
+dynamic = ["version"]
+description = "Keeps local copies of your YouTube Music playlists in sync - Docker app with a web UI."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Rafal Polawski" }]
+
+[tool.setuptools.dynamic]
+version = { attr = "ytmd.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["ytmd*"]
+
+[tool.setuptools.package-data]
+"ytmd.web" = ["static/*"]
+
+[project.scripts]
+ytmd = "ytmd.app:main"
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
