@@ -321,9 +321,9 @@ python -m pytest
 | `ytmd/web/` | FastAPI backend and the single-page web UI (no build step) |
 | `tests/` | Pytest suite: fake YouTube Music, scripted and real yt-dlp runs (no network needed) |
 
-**Releasing:** bump `__version__` in `ytmd/__init__.py`, add a section to `CHANGELOG.md`, then
-push a tag `vX.Y.Z`. GitHub Actions publishes the Docker images and creates the GitHub release
-with the changelog notes.
+**Releasing:** bump `__version__` in `ytmd/__init__.py` and add a section to `CHANGELOG.md`, then
+either push a tag `vX.Y.Z` or run the **Release** workflow from the Actions tab with the version
+number. GitHub Actions creates the GitHub release from the changelog and publishes the Docker images.
 
 ## Disclaimer
 
