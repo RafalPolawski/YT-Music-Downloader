@@ -1,27 +1,22 @@
-# --- Authentication & Credentials ---
-# NEVER commit these files to a public repository!
-# They contain your Google session data.
-oauth.json
+# Runtime data (docker compose volumes) - never commit your credentials!
+config/
+music/
+browser.json
 headers.json
+oauth.json
 cookies.txt
-cookies_clean.txt
 
-# --- Media & Download Data ---
-# All downloaded music goes here
-downloads/
-# Download archives (used to track which songs are already downloaded)
-.archives/
-archive_*.txt
-
-# --- Python Environment ---
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+.venv/
 venv/
-.venv
 .env
+.pytest_cache/
+*.egg-info/
+build/
+dist/
 
-# --- OS Generated Files ---
+# OS
 .DS_Store
 Thumbs.db
-sync.log

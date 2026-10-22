@@ -1,0 +1,141 @@
+from __future__ import annotations
+
+import base64
+
+import pytest
+from fastapi.testclient import TestClient
+
+from tests.conftest import FakeClient, FakeDownloader, track
+from ytmd.app import AppContext
+from ytmd.config import Environment
+from ytmd.web.api import SECRET_MASK, create_app
+
+
+@pytest.fixture
+def api(tmp_path, audio_samples, jpeg_bytes):
+    def make(password=""):
+        env = Environment(config_dir=tmp_path / "config", music_dir=tmp_path / "music", host="127.0.0.1",
+                          port=0, web_user="admin", web_password=password, log_level="INFO")
+        fake = FakeClient()
+        fake.add_playlist("PL1", "Road Trip", [track("a1", "Song", ["Artist"])])
+        ctx = AppContext(env, engine_kwargs={"client_factory": lambda s: fake,
+                                             "download_fn": FakeDownloader(audio_samples),
+                                             "image_fetcher": lambda u, s: jpeg_bytes})
+        ctx.settings.update({"download_delay_seconds": 0})
+        return ctx, TestClient(create_app(ctx), headers={"X-YTMD": "1"})
+
+    return make
+
+
+def test_status_and_static(api):
+    ctx, c = api()
+    assert c.get("/api/health").json() == {"ok": True}
+    status = c.get("/api/status").json()
+    assert status["auth"]["connected"] is False
+    assert status["state"]["phase"] == "idle"
+    assert "YT Music Downloader" in c.get("/").text
+
+
+def test_settings_roundtrip_masks_secrets(api):
+    ctx, c = api()
+    r = c.put("/api/settings", json={"jellyfin_url": "http://jf:8096", "jellyfin_api_key": "secret",
+                                     "audio_format": "m4a", "unknown": 1})
+    assert r.status_code == 200
+    assert r.json()["jellyfin_api_key"] == SECRET_MASK
+    c.put("/api/settings", json={"jellyfin_api_key": SECRET_MASK, "layout": "flat"})
+    assert ctx.settings.get().jellyfin_api_key == "secret"
+    assert ctx.settings.get().layout == "flat"
+    assert c.put("/api/settings", json={"audio_format": "flac"}).status_code == 400
+
+
+def test_state_changes_need_the_csrf_header(api):
+    ctx, c = api()
+    assert c.post("/api/pause", headers={"X-YTMD": ""}).status_code == 403
+    assert c.get("/api/status", headers={"X-YTMD": ""}).status_code == 200
+
+
+def test_dangerous_ytdlp_args_are_rejected(api):
+    ctx, c = api()
+    assert c.put("/api/settings", json={"ytdlp_extra_args": "--exec 'rm -rf /'"}).status_code == 400
+    assert c.put("/api/settings", json={"ytdlp_extra_args": "-o /tmp/x"}).status_code == 400
+    ok = c.put("/api/settings", json={"ytdlp_extra_args": "--extractor-args youtube:player_client=tv --limit-rate=5M"})
+    assert ok.status_code == 200
+
+
+def test_sync_requires_account(api):
+    _, c = api()
+    assert c.post("/api/sync").status_code == 400
+
+
+def test_playlists_and_tracks_flow(api):
+    ctx, c = api()
+    ctx.env.auth_file.write_text("{}")
+    assert [p["id"] for p in c.post("/api/playlists/refresh").json()] == ["PL1"]
+    ctx.engine.run("test")
+    tracks = c.get("/api/tracks", params={"status": "downloaded"}).json()
+    assert tracks["total"] == 1 and tracks["items"][0]["playlists"] == "Road Trip"
+    assert c.patch("/api/playlists/PL1", json={"enabled": False}).json()["enabled"] == 0
+    ctx.engine.run("test")
+    trash = c.get("/api/trash").json()
+    assert len(trash["items"]) == 1
+    assert c.delete("/api/trash").json()["removed"] == 1
+
+
+def test_basic_auth(api):
+    _, c = api(password="pw")
+    assert c.get("/api/status").status_code == 401
+    assert c.get("/api/health").status_code == 200
+    token = base64.b64encode(b"admin:pw").decode()
+    assert c.get("/api/status", headers={"Authorization": f"Basic {token}"}).status_code == 200
+
+
+def test_connect_with_headers(api):
+    ctx, c = api()
+    ctx.client = lambda: FakeClient()
+    r = c.post("/api/auth", json={"headers": "cookie: __Secure-3PAPISID=a; SAPISID=a\nx-goog-authuser: 0"})
+    assert r.status_code == 200, r.text
+    assert r.json()["account"]["name"] == "Tester"
+    auth = c.get("/api/auth").json()
+    assert auth["connected"] and auth["mode"] == "browser"
+    assert c.delete("/api/auth").status_code == 200
+    assert c.get("/api/auth").json()["connected"] is False
+
+
+def test_oauth_device_flow(api, monkeypatch):
+    from ytmd.web import api as api_module
+
+    class FakeDeviceLogin:
+        polls = 0
+
+        def __init__(self, client_id, client_secret):
+            if client_id != "id":
+                raise ValueError("Google rejected the OAuth client")
+            self.client = {"client_id": client_id, "client_secret": client_secret}
+            self.user_code, self.verification_url, self.interval, self.expires_at = "ABC-DEF-GHI", "https://www.google.com/device", 5, 0
+
+        def poll(self):
+            FakeDeviceLogin.polls += 1
+            if FakeDeviceLogin.polls < 2:
+                return None
+            return {"scope": "s", "token_type": "Bearer", "access_token": "a", "refresh_token": "r",
+                    "expires_at": 0, "expires_in": 3600}
+
+    monkeypatch.setattr(api_module, "DeviceLogin", FakeDeviceLogin)
+    ctx, c = api()
+    ctx.client = lambda: FakeClient()
+    ctx.env.auth_file.write_text("{}")
+    assert c.post("/api/auth/oauth/start", json={"client_id": "bad", "client_secret": "x"}).status_code == 400
+    start = c.post("/api/auth/oauth/start", json={"client_id": "id", "client_secret": "secret"}).json()
+    assert start["user_code"] == "ABC-DEF-GHI"
+    assert c.post("/api/auth/oauth/poll").json() == {"status": "pending"}
+    done = c.post("/api/auth/oauth/poll").json()
+    assert done["status"] == "connected" and done["account"]["name"] == "Tester"
+    assert c.get("/api/auth").json()["mode"] == "oauth"
+    assert not ctx.env.auth_file.exists()  # switching methods replaces the old credentials
+
+
+def test_connect_rejects_bad_headers(api):
+    ctx, c = api()
+    r = c.post("/api/auth", json={"headers": "accept: */*"})
+    assert r.status_code == 400
+    assert not ctx.env.auth_file.exists()
