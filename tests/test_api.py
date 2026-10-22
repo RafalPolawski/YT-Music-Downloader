@@ -81,6 +81,30 @@ def test_playlists_and_tracks_flow(api):
     assert c.delete("/api/trash").json()["removed"] == 1
 
 
+def test_basic_auth_with_non_ascii_password(api):
+    _, c = api(password="zażółć")
+    token = base64.b64encode("admin:zażółć".encode()).decode()
+    assert c.get("/api/status", headers={"Authorization": f"Basic {token}"}).status_code == 200
+    wrong = base64.b64encode(b"admin:zazolc").decode()
+    assert c.get("/api/status", headers={"Authorization": f"Basic {wrong}"}).status_code == 401
+
+
+def test_static_assets_are_versioned(api):
+    from ytmd import __version__
+    _, c = api()
+    html = c.get("/").text
+    assert f"/static/app.js?v={__version__}" in html and "__VERSION__" not in html
+    assert c.get(f"/static/app.js?v={__version__}").status_code == 200
+
+
+def test_library_removal_approval(api):
+    ctx, c = api()
+    ctx.db.set_kv("held_library_removal", ["Old list"])
+    assert c.get("/api/status").json()["held_library_removal"] == ["Old list"]
+    assert c.post("/api/library/approve-removal").json() == {"ok": True}
+    assert ctx.db.get_kv("approve_library_removal") is True
+
+
 def test_basic_auth(api):
     _, c = api(password="pw")
     assert c.get("/api/status").status_code == 401

@@ -1,8 +1,10 @@
-# Runtime dependencies (installed into the Docker image)
-fastapi>=0.115
-uvicorn>=0.30
-ytmusicapi>=1.10
-yt-dlp[default]>=2025.11.12
-mutagen>=1.47
-Pillow>=10.4
-requests>=2.32
+# Runtime dependencies of the Docker image. Versions are pinned for reproducible builds
+# (Dependabot proposes updates). yt-dlp is the exception: it must stay current, so the
+# image installs the latest release and the app keeps it updated at runtime.
+fastapi==0.161.0
+uvicorn==0.54.0
+ytmusicapi==1.12.3
+mutagen==1.48.1
+Pillow==13.0.0
+requests==2.34.2
+yt-dlp[default]>=2026.10.21

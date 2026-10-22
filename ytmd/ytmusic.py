@@ -211,7 +211,7 @@ def _headers_from_curl(command: str) -> str:
     return "\n".join(headers)
 
 
-def _write_private(path: Path, text: str) -> None:
+def write_private(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".new")
     tmp.write_text(text, encoding="utf-8")
@@ -249,7 +249,7 @@ def save_browser_auth(raw: str, auth_file: Path) -> None:
     auth_key = next((k for k in data if k.lower() == "authorization"), "authorization")
     if "SAPISIDHASH" not in str(data.get(auth_key, "")):
         data[auth_key] = "SAPISIDHASH 0_placeholder"
-    _write_private(auth_file, json.dumps(data, indent=2))
+    write_private(auth_file, json.dumps(data, indent=2))
 
 
 class DeviceLogin:
@@ -296,8 +296,8 @@ class DeviceLogin:
 
 
 def save_oauth(env: Environment, token: dict, client: dict) -> None:
-    _write_private(env.oauth_client_file, json.dumps(client, indent=2))
-    _write_private(env.oauth_file, json.dumps(token, indent=2))
+    write_private(env.oauth_client_file, json.dumps(client, indent=2))
+    write_private(env.oauth_file, json.dumps(token, indent=2))
     env.auth_file.unlink(missing_ok=True)
 
 

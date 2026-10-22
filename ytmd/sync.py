@@ -30,8 +30,9 @@ from ytmd import jellyfin
 from ytmd.config import Environment, Settings, SettingsStore
 from ytmd.downloader import (CANCELLED, NEEDS_LOGIN, RATE_LIMITED, UNAVAILABLE, DownloadError,
                              DownloadOptions, Progress, clean_work_dir, download_audio)
-from ytmd.library import (COVER_FILE, PathAllocator, Trash, move_file, prune_parents, remove_with_sidecars,
-                          render_m3u8, sanitize, track_relpath, with_suffix_tag, write_if_changed)
+from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_file, prune_parents,
+                          remove_with_sidecars, render_m3u8, sanitize, track_relpath, with_suffix_tag,
+                          write_if_changed)
 from ytmd.tagger import TrackTags, audio_info, fetch_image, square_jpeg, to_lrc, write_tags
 from ytmd.ytmusic import (LIKED_MUSIC_ID, VIDEO_TYPE_SONG, AuthError, YTMusicClient, auth_mode, make_client,
                           netscape_cookies_from_auth)
@@ -358,7 +359,7 @@ class SyncEngine:
             desired = allocator.claim(t["video_id"], track_relpath(t, settings.layout, ext))
             if desired != t["path"]:
                 relocations.append((t, desired))
-        summary.relocated += self._relocate(relocations)
+        summary.relocated += self._relocate(relocations, settings)
 
         for t in referenced:
             if t["status"] != dbm.TRASHED:
@@ -394,24 +395,35 @@ class SyncEngine:
         self.db.add_event("info", f"Removed ({where}): {self._label(t)}")
         log.info("Removed %s (%s)", t["path"], where)
 
-    def _relocate(self, relocations: list[tuple[dict, str]]) -> int:
+    def _relocate(self, relocations: list[tuple[dict, str]], settings: Settings) -> int:
         """Move files to new paths in two phases so swaps/chains cannot collide."""
         if not relocations:
             return 0
         music = self.music_dir
         staging = self.env.tmp_dir / "relocate"
+        covers: dict[Path, Path] = {}  # source folder -> its cover.jpg kept aside
         staged = []
         for t, desired in relocations:
             src = music / t["path"]
+            folder_cover = src.parent / COVER_FILE
+            if folder_cover.exists() and src.parent not in covers:
+                kept = staging / "covers" / f"{len(covers)}.jpg"
+                kept.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(folder_cover, kept)
+                covers[src.parent] = kept
             tmp = staging / f"{t['video_id']}{src.suffix}"
             move_file(src, tmp)
             prune_parents(src.parent, music)
-            staged.append((t, desired, tmp))
-        for t, desired, tmp in staged:
+            staged.append((t, desired, tmp, covers.get(src.parent)))
+        for t, desired, tmp, cover in staged:
             if (music / desired).exists():
                 desired = with_suffix_tag(desired, t["video_id"])
-            move_file(tmp, music / desired)
+            target = music / desired
+            move_file(tmp, target)
             self.db.update_track(t["video_id"], path=desired)
+            if cover and settings.layout == "artist_album" and t.get("album") and not (target.parent / COVER_FILE).exists():
+                shutil.copyfile(cover, target.parent / COVER_FILE)
+        shutil.rmtree(staging / "covers", ignore_errors=True)
         log.info("Reorganized %d file(s) to match the library layout", len(staged))
         return len(staged)
 
@@ -420,6 +432,8 @@ class SyncEngine:
         staging = self.env.tmp_dir / "relocate"
         if staging.exists():
             for f in staging.iterdir():
+                if not f.is_file() or f.suffix in SIDECAR_EXTS:
+                    continue  # sidecars travel with their audio file
                 t = self.db.track(f.stem)
                 if t and t["path"] and not (self.music_dir / t["path"]).exists():
                     move_file(f, self.music_dir / t["path"])

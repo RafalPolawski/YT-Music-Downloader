@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
@@ -21,7 +21,8 @@ from ytmd.config import Settings
 from ytmd.library import disk_usage
 from ytmd.logs import memory_handler
 from ytmd.updater import update_ytdlp
-from ytmd.ytmusic import AuthError, DeviceLogin, auth_mode, disconnect, save_browser_auth, save_oauth
+from ytmd.ytmusic import (AuthError, DeviceLogin, auth_mode, disconnect, save_browser_auth, save_oauth,
+                          write_private)
 
 log = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ def create_app(ctx) -> FastAPI:
 
     # ------------------------------------------------------------------ optional password
     if env.web_password:
-        expected = f"{env.web_user}:{env.web_password}"
+        expected = f"{env.web_user}:{env.web_password}".encode("utf-8")
 
         @app.middleware("http")
         async def basic_auth(request: Request, call_next):
@@ -45,9 +46,9 @@ def create_app(ctx) -> FastAPI:
             header = request.headers.get("authorization", "")
             if header.lower().startswith("basic "):
                 try:
-                    given = base64.b64decode(header[6:]).decode("utf-8")
-                except Exception:
-                    given = ""
+                    given = base64.b64decode(header[6:])
+                except ValueError:
+                    given = b""
                 if secrets.compare_digest(given, expected):
                     return await call_next(request)
             return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="YT Music Downloader"'})
@@ -322,7 +323,7 @@ def create_app(ctx) -> FastAPI:
             raise bad_request("This does not look like a Netscape cookies.txt export for youtube.com")
         if not text.startswith("# "):
             text = "# Netscape HTTP Cookie File\n" + text
-        env.cookies_file.write_text(text + "\n", encoding="utf-8")
+        write_private(env.cookies_file, text + "\n")
         return {"ok": True}
 
     @app.delete("/api/cookies")
@@ -360,8 +361,11 @@ def create_app(ctx) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+    index_html = (STATIC_DIR / "index.html").read_text(encoding="utf-8").replace("__VERSION__", __version__)
+
     @app.get("/", include_in_schema=False)
     def index():
-        return FileResponse(STATIC_DIR / "index.html", headers={"Cache-Control": "no-cache"})
+        # Asset URLs carry the version, so browsers fetch fresh JS/CSS after an update.
+        return HTMLResponse(index_html, headers={"Cache-Control": "no-cache"})
 
     return app

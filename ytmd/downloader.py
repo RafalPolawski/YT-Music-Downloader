@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -97,8 +98,8 @@ def _parse_progress(line: str) -> Progress | None:
 
 
 def ytdlp_command() -> list[str]:
-    # -I: never import modules from the working directory; -X utf8: stable output encoding
-    return [sys.executable, "-I", "-X", "utf8", "-m", "yt_dlp"]
+    # -P: never import modules from the working directory; -X utf8: stable output encoding
+    return [sys.executable, "-P", "-X", "utf8", "-m", "yt_dlp"]
 
 
 def ytdlp_version() -> str | None:
@@ -196,12 +197,14 @@ def _run_once(url, work_dir, opts, on_progress, cancel) -> Path:
     reader = threading.Thread(target=lambda: stderr_chunks.append(proc.stderr.read()), daemon=True)
     reader.start()
     killer_done = threading.Event()
+    timed_out = threading.Event()
 
     def watchdog():
-        waited = 0.0
+        started = time.monotonic()
         while not killer_done.wait(1.0):
-            waited += 1.0
-            if (cancel is not None and cancel.is_set()) or waited > TIMEOUT_SECONDS:
+            if time.monotonic() - started > TIMEOUT_SECONDS:
+                timed_out.set()
+            if (cancel is not None and cancel.is_set()) or timed_out.is_set():
                 proc.kill()
                 return
 
@@ -226,6 +229,8 @@ def _run_once(url, work_dir, opts, on_progress, cancel) -> Path:
 
     if cancel is not None and cancel.is_set():
         raise DownloadError(CANCELLED, "Cancelled")
+    if timed_out.is_set():
+        raise DownloadError(TRANSIENT, f"yt-dlp did not finish within {TIMEOUT_SECONDS // 60} minutes")
     stderr = "".join(stderr_chunks)
     if proc.returncode != 0 or produced is None or not produced.exists():
         message = _last_error_line(stderr)

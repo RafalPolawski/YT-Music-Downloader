@@ -399,3 +399,36 @@ def test_title_change_on_youtube_music_renames_file(harness):
     assert "Delta/Singles/Fourth Song (Remastered).opus" in h.audio_files()
     assert "Delta/Singles/Fourth Song.opus" not in h.audio_files()
     assert OggOpus(h.music / "Delta/Singles/Fourth Song (Remastered).opus")["title"] == ["Fourth Song (Remastered)"]
+
+
+def test_relocation_keeps_the_album_cover(harness):
+    h = harness
+    basic_library(h)
+    h.sync()
+    t = h.db.track("a1")
+    assert (h.music / "Alpha/Album A/cover.jpg").exists()
+    moved = h.engine._relocate([(t, "Alpha/Album A (Deluxe)/04 First Song.opus")], h.settings.get())
+    assert moved == 1
+    assert (h.music / "Alpha/Album A (Deluxe)/04 First Song.opus").exists()
+    assert (h.music / "Alpha/Album A (Deluxe)/cover.jpg").exists()
+    assert not (h.music / "Alpha/Album A").exists()  # only the cover was left, so the folder is gone
+    assert h.db.track("a1")["path"] == "Alpha/Album A (Deluxe)/04 First Song.opus"
+
+
+def test_interrupted_reorganisation_is_recovered_on_start(harness, audio_samples):
+    from ytmd.sync import SyncEngine
+    h = harness
+    h.client.add_playlist("PL1", "One", [track("r1", "Song", ["Band"])])
+    h.client.lyrics_data["L1"] = {"text": "la", "synced": [(0, "la")]}
+    h.client.watch["r1"] = {"lyrics_id": "L1", "counterpart": None}
+    h.sync()
+    path = h.music / "Band/Singles/Song.opus"
+    assert path.with_suffix(".lrc").exists()
+    staging = h.env.tmp_dir / "relocate"
+    staging.mkdir(parents=True)
+    path.rename(staging / "r1.opus")
+    path.with_suffix(".lrc").rename(staging / "r1.lrc")  # crash between the two phases
+
+    SyncEngine(h.env, h.settings, h.db, client_factory=lambda s: h.client, download_fn=h.downloader)
+    assert path.exists() and path.with_suffix(".lrc").exists()
+    assert not h.env.tmp_dir.exists()
