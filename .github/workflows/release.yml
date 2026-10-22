@@ -21,7 +21,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Resolve version
         id: v
@@ -63,7 +63,7 @@ jobs:
             echo "Download the attached \`docker-compose.yml\`, set your music folder and run \`docker compose up -d\`."
           } >> notes.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.v.outputs.tag }}
           target_commitish: ${{ github.sha }}
