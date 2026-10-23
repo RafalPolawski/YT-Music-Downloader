@@ -27,6 +27,7 @@ const ICONS = {
   moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
   cloud: '<path d="M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>',
 };
 const icon = (name, attrs = "") =>
@@ -123,6 +124,7 @@ const NAV = [
   ["dashboard", "Dashboard", "dashboard"],
   ["playlists", "Playlists", "playlists"],
   ["tracks", "Tracks", "tracks"],
+  ["duplicates", "Duplicates", "copy"],
   ["trash", "Trash", "trash"],
   ["logs", "Logs", "logs"],
   ["settings", "Settings", "settings"],
@@ -517,6 +519,63 @@ const Tracks = {
   },
 };
 
+/* ===================================================================== duplicates */
+const Duplicates = {
+  mount(el) {
+    el.innerHTML = `
+      <div class="page-head"><div><h1>Duplicates</h1><p class="muted">Songs that appear more than once in the same playlist — the same video added twice, or the same song in two versions.</p></div>
+        <span class="spacer"></span><button class="btn" data-action="reload">${icon("refresh")} Check again</button></div>
+      <div class="callout warning" style="margin-bottom:16px">${icon("alert")}<div><b>Removing happens on YouTube Music.</b>
+        Remove duplicates here or by hand in the YouTube Music app — either way the local file follows at the next sync.
+        Only playlists you own can be edited from here; nothing is ever removed automatically.</div></div>
+      <div id="dup-list" class="stack"><p class="muted">Looking for duplicates…</p></div>`;
+    el.addEventListener("click", (e) => this.onClick(e));
+    this.load();
+  },
+  async load() {
+    try { this.groups = await api("/api/duplicates"); this.render(); }
+    catch (e) { toast(e.message, "error"); }
+  },
+  render() {
+    const box = $("#dup-list");
+    if (!this.groups.length) {
+      box.innerHTML = `<div class="card"><div class="empty">${icon("check")}<p>No duplicates in your synced playlists.</p></div></div>`;
+      return;
+    }
+    box.innerHTML = this.groups.map((g, gi) => `
+      <div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2>
+        <span class="badge ${g.kind === "same" ? "warning" : "info"}">${g.kind === "same" ? "Same song added twice" : "Same song, different versions"}</span></div>
+        <div class="table-wrap" style="box-shadow:none"><table><tbody>${g.items.map((it, ii) => `
+          <tr><td><div class="cell-track">${thumbHtml(it.thumbnail, it.album || it.title)}<div>
+              <div class="t">${esc(it.title)}</div><div class="a">${esc((it.artists || []).join(", "))}${it.album ? ` · ${esc(it.album)}` : ""}</div></div></div></td>
+            <td class="small muted nowrap">#${it.position}</td>
+            <td class="small nowrap">${it.album_version ? "Album version" : "Music video / upload"}</td>
+            <td style="text-align:right">${it.keep ? `<span class="badge success">Suggested to keep</span>`
+              : !g.editable ? `<span class="small muted">Remove it in the YouTube Music app</span>`
+              : !it.set_video_id ? `<span class="small muted">Run a sync first</span>`
+              : `<button class="btn sm danger" data-action="remove" data-g="${gi}" data-i="${ii}">${icon("trash")} Remove on YouTube Music</button>`}</td></tr>`).join("")}
+        </tbody></table></div></div>`).join("");
+  },
+  async onClick(e) {
+    const b = e.target.closest("[data-action]");
+    if (!b) return;
+    if (b.dataset.action === "reload") { this.load(); return; }
+    if (b.dataset.action === "remove") {
+      const g = this.groups[+b.dataset.g], it = g.items[+b.dataset.i];
+      const ok = await confirmDialog({
+        title: "Remove from YouTube Music?",
+        body: `<b>${esc(it.title)}</b> (position #${it.position}) will be removed from the playlist <b>${esc(g.playlist)}</b> in your YouTube Music account. The local file is updated at the next sync.`,
+        confirm: "Remove on YouTube Music", danger: true,
+      });
+      if (!ok) return;
+      b.disabled = true;
+      const r = await act(() => api("/api/duplicates/remove", { method: "POST", body: { playlist_id: g.playlist_id, video_id: it.video_id, set_video_id: it.set_video_id } }),
+        "Removed on YouTube Music");
+      if (r) this.load(); else b.disabled = false;
+    }
+  },
+};
+
 /* ===================================================================== trash */
 const Trash = {
   mount(el) {
@@ -760,8 +819,9 @@ const Settings = {
 
       <div class="card"><div class="card-head"><h2>Library</h2></div>
         ${this.field("Music folder", "Set by the Docker volume / <code>YTMD_MUSIC_DIR</code>.", `<input type="text" value="${esc(s.paths?.music || "")}" disabled>`)}
-        ${this.radios("layout", "Folder layout", "Changing it moves existing files at the next sync.", [
-          { value: "artist_album", title: "Artist / Album / Track <span class='badge violet'>recommended</span>", desc: "Best for Jellyfin, Navidrome and Plex. Tracks without an album go to Artist/Singles.", example: "Daft Punk/Discovery/03 Digital Love.opus" },
+        ${this.radios("layout", "Folder layout", "Saving a new layout reorganizes the existing files right away.", [
+          { value: "playlist", title: "Playlist / Track <span class='badge violet'>default</span>", desc: "Mirrors YouTube Music: one folder per playlist. A song in several playlists gets a file in each folder (hard links where the disk supports them, so no extra space).", example: "Road Trip/Digital Love.opus" },
+          { value: "artist_album", title: "Artist / Album / Track", desc: "Classic library for the album and artist views of Jellyfin, Navidrome and Plex. Tracks without an album go to Artist/Singles.", example: "Daft Punk/Discovery/03 Digital Love.opus" },
           { value: "artist", title: "Artist / Track", example: "Daft Punk/Digital Love.opus" },
           { value: "flat", title: "One folder", example: "Daft Punk - Digital Love.opus" },
         ])}
@@ -880,7 +940,7 @@ const Settings = {
 };
 
 /* ===================================================================== router */
-const PAGES = { dashboard: Dashboard, playlists: Playlists, tracks: Tracks, trash: Trash, logs: Logs, settings: Settings };
+const PAGES = { dashboard: Dashboard, playlists: Playlists, tracks: Tracks, duplicates: Duplicates, trash: Trash, logs: Logs, settings: Settings };
 
 function route() {
   const raw = location.hash.replace(/^#\/?/, "") || "dashboard";

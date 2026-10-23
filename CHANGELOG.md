@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- New default folder layout "Playlist / Track": one folder per YouTube Music playlist with files named
+  after the song title. A song in several playlists is downloaded once and hard-linked (or copied) into
+  every playlist folder; removing it from one playlist removes only that folder's file.
+- Duplicates page listing songs that appear twice in the same playlist (same video, or video and album
+  version), with a clearly marked button to remove an entry on YouTube Music.
+
+### Changed
+
+- Saving a different folder layout reorganizes the library right away instead of at the next scheduled
+  sync. Existing installations keep their current layout until it is changed in Settings.
+
 ## [1.0.1] - 2026-10-23
 
 ### Changed

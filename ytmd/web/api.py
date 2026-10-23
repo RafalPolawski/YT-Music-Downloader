@@ -18,6 +18,7 @@ from ytmd import __version__
 from ytmd import db as dbm
 from ytmd import jellyfin
 from ytmd.config import Settings
+from ytmd.duplicates import find_duplicates
 from ytmd.library import disk_usage
 from ytmd.logs import memory_handler
 from ytmd.updater import update_ytdlp
@@ -208,6 +209,34 @@ def create_app(ctx) -> FastAPI:
             db.update_track(t["video_id"], status=dbm.PENDING, attempts=0, next_attempt_at=None, last_error=None)
         return {"ok": True}
 
+    # ------------------------------------------------------------------ duplicates
+    @app.get("/api/duplicates")
+    def duplicates():
+        return find_duplicates(db)
+
+    @app.post("/api/duplicates/remove")
+    def remove_duplicate(payload: dict = Body(...)):
+        playlist_id = str(payload.get("playlist_id", ""))
+        video_id = str(payload.get("video_id", ""))
+        set_video_id = str(payload.get("set_video_id", ""))
+        p = db.playlist(playlist_id)
+        if p is None:
+            raise HTTPException(status_code=404, detail="Unknown playlist")
+        if not p["owned"]:
+            raise bad_request("Only playlists you own can be edited - remove it in the YouTube Music app")
+        entry = next((e for e in db.playlist_entries(playlist_id)
+                      if e["video_id"] == video_id and e["set_video_id"] == set_video_id), None)
+        if entry is None or not set_video_id:
+            raise bad_request("That entry is not in the playlist (any more) - run a sync and try again")
+        try:
+            ctx.client().remove_from_playlist(playlist_id, video_id, set_video_id)
+        except Exception as exc:
+            raise bad_request(f"YouTube Music refused the change: {exc}")
+        db.remove_playlist_entry(playlist_id, set_video_id)
+        db.add_event("info", f"Removed duplicate '{entry['title']}' from '{p['title']}' on YouTube Music")
+        scheduler.trigger("duplicate removed")
+        return {"ok": True}
+
     # ------------------------------------------------------------------ trash
     @app.get("/api/trash")
     def trash():
@@ -251,6 +280,8 @@ def create_app(ctx) -> FastAPI:
             raise bad_request(f"{'.'.join(str(p) for p in first['loc'])}: {first['msg']}")
         if new.sync_interval_minutes != old.sync_interval_minutes:
             scheduler.reschedule()
+        if (new.layout, new.playlists_dir) != (old.layout, old.playlists_dir) and auth_mode(env):
+            scheduler.trigger("library layout changed")  # reorganize the files right away
         log.info("Settings saved")
         return get_settings()
 

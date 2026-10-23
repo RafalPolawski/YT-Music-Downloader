@@ -58,6 +58,7 @@ class FakeClient:
         self.watch: dict[str, dict] = {}
         self.lyrics_data: dict[str, dict] = {}
         self.failing_playlists: set[str] = set()
+        self.removed: list[tuple[str, str, str]] = []
 
     def add_playlist(self, pid, title, tracks, owned=True):
         self.playlists.append({"id": pid, "title": title, "thumbnail": None, "count": len(tracks),
@@ -74,7 +75,13 @@ class FakeClient:
     def playlist_tracks(self, pid):
         if pid in self.failing_playlists:
             raise RuntimeError("boom")
-        return [dict(t) for t in self.tracks.get(pid, [])]
+        return [{**t, "set_video_id": t.get("set_video_id") or f"{pid}:{i}"}
+                for i, t in enumerate(self.tracks.get(pid, []))]
+
+    def remove_from_playlist(self, pid, vid, set_vid):
+        self.removed.append((pid, vid, set_vid))
+        self.tracks[pid] = [t for i, t in enumerate(self.tracks[pid])
+                            if (t.get("set_video_id") or f"{pid}:{i}") != set_vid]
 
     def album(self, album_id):
         return self.albums[album_id]
@@ -111,7 +118,7 @@ class Harness:
                                port=0, web_user="admin", web_password="", log_level="INFO")
         self.env.ensure_dirs()
         self.settings = SettingsStore(self.env.settings_file)
-        self.settings.update({"download_delay_seconds": 0, "concurrent_downloads": 2})
+        self.settings.update({"download_delay_seconds": 0, "concurrent_downloads": 2, "layout": "artist_album"})
         self.db = Database(self.env.db_file)
         self.client = FakeClient()
         self.downloader = FakeDownloader(samples)

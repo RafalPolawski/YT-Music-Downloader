@@ -32,10 +32,13 @@ pliki na dysku za tym nadążały.
   dodania, usunięcia oraz zmiany kolejności.
 - 📃 **Playlisty jako `.m3u8`** w dokładnie tej samej kolejności co w YouTube Music, ze ścieżkami
   względnymi — działają w Jellyfinie, Navidrome, Symfonium (przez serwer), foobar2000, VLC…
-- 🗂️ **Porządna biblioteka, a nie kupka plików** – każdy utwór zapisany raz (nawet jeśli jest w dziesięciu
-  playlistach) jako `Wykonawca/Album/01 Tytuł.opus`, z tagami: wykonawca, wykonawca albumu, album, rok,
-  numer utworu, okładka w pliku, `cover.jpg` w folderze albumu oraz tekst (zsynchronizowany `.lrc`, jeśli
-  jest dostępny).
+- 🗂️ **Playlisty jako foldery** – domyślnie każda playlista to folder (`Road Trip/Digital Love.opus`),
+  dokładnie jak w YouTube Music. Utwór z kilku playlist jest pobierany raz i podlinkowany (hard link) do
+  każdego folderu. Wolisz klasyczną bibliotekę? Jednym kliknięciem przełączysz na `Wykonawca/Album/01 Tytuł.opus`.
+- 🏷️ **Porządne tagi** – wykonawca, wykonawca albumu, album, rok, numer utworu, okładka w pliku i tekst
+  (zsynchronizowany `.lrc`, jeśli jest dostępny).
+- 🔍 **Wyszukiwarka duplikatów** – pokazuje utwory, które są w tej samej playliście dwa razy (albo jako
+  teledysk i wersja z albumu); usuniesz je w aplikacji YouTube Music albo jednym kliknięciem w panelu.
 - 🎬 **Wersje albumowe zamiast teledysków** – jeśli na playliście jest teledysk, pobierana jest czysta wersja
   z albumu (do wyłączenia).
 - 🎧 **Najlepsza jakość bez ponownego kodowania** – Opus (domyślnie) lub M4A to oryginalne strumienie
@@ -159,35 +162,37 @@ Zobacz [Jellyfin i Symfonium](#jellyfin-i-symfonium) poniżej.
 
 ```text
 music/
-├── Daft Punk/
-│   └── Discovery/
-│       ├── 03 Digital Love.opus
-│       ├── 03 Digital Love.lrc        ← zsynchronizowany tekst (jeśli jest)
-│       └── cover.jpg
-├── Bonobo/
-│   └── Singles/                       ← utwory bez albumu
-│       └── Kong.opus
+├── Road Trip/                         ← jeden folder na playlistę (domyślny układ)
+│   ├── Digital Love.opus
+│   ├── Digital Love.lrc               ← zsynchronizowany tekst (jeśli jest)
+│   └── Kong.opus
+├── Deep Focus/
+│   └── Kong.opus                      ← ten sam utwór w dwóch playlistach: hard link, bez dodatkowego miejsca
 ├── Playlists/
-│   ├── Road Trip.m3u8
+│   ├── Road Trip.m3u8                 ← kolejność dokładnie jak w YouTube Music
 │   └── Deep Focus.m3u8
 ├── .ytmd-trash/                       ← ukryty: usunięte utwory, kasowane po 30 dniach
 └── .ytmd-tmp/                         ← ukryty: pobierania w toku
 ```
 
-Plik playlisty wygląda tak — kolejność jest taka jak w YouTube Music, a ścieżki są względne, więc działa
-niezależnie od tego, gdzie folder jest zamontowany:
+Nazwa pliku to sam tytuł; jeśli dwa różne utwory w jednej playliście mają ten sam tytuł, dopisywany jest
+wykonawca (`Kong (Bonobo).opus`). Plik playlisty wygląda tak — ścieżki są względne, więc działa niezależnie
+od tego, gdzie folder jest zamontowany:
 
 ```text
 #EXTM3U
 #PLAYLIST:Road Trip
 #EXTINF:301,Daft Punk - Digital Love
-../Daft Punk/Discovery/03 Digital Love.opus
+../Road Trip/Digital Love.opus
 #EXTINF:244,Bonobo - Kong
-../Bonobo/Singles/Kong.opus
+../Road Trip/Kong.opus
 ```
 
-Układ folderów można zmienić w ustawieniach (`Wykonawca/Album/Utwór`, `Wykonawca/Utwór` albo jeden płaski
-folder) — istniejące pliki zostaną automatycznie przeniesione.
+**Inne układy** (Settings → Library): `Wykonawca/Album/01 Tytuł` — klasyczna biblioteka z najczystszym widokiem
+albumów i wykonawców w Jellyfinie/Navidrome/Plexie, a także `Wykonawca/Tytuł` i jeden płaski folder. Zapisanie
+innego układu od razu przebudowuje istniejące pliki, nic nie jest pobierane ponownie. Hard linki wymagają,
+żeby folder z muzyką był na jednym dysku; tam, gdzie nie są obsługiwane (niektóre udziały sieciowe), robiona
+jest zwykła kopia.
 
 ## Jellyfin i Symfonium
 
@@ -235,7 +240,7 @@ Prawie wszystko ustawia się w panelu WWW; zapisuje się to w `config/settings.j
 | Format | Opus | `opus` / `m4a` (oryginalne strumienie) lub `mp3` (przekodowane V0). |
 | Prefer album versions | wł. | Pobiera utwór z albumu zamiast teledysku. |
 | Lyrics / Album folder covers | wł. | Tekst w pliku + `.lrc`, `cover.jpg` w folderze albumu. |
-| Folder layout | Artist/Album/Track | Albo `Artist/Track`, albo jeden płaski folder. |
+| Folder layout | Playlist/Track | Albo `Artist/Album/Track`, `Artist/Track` lub jeden płaski folder. |
 | Playlist files folder | `Playlists` | Gdzie trafiają pliki `.m3u8` (wewnątrz folderu z muzyką). |
 | Keep removed tracks for | 30 dni | `0` = usuwanie od razu. |
 | Safety net | 50 % / 10 utworów | Wstrzymuje usuwanie, gdy playlista nagle tyle straci. |
@@ -260,8 +265,8 @@ wystawiaj portu 8080 do internetu (do zdalnego dostępu użyj VPN, np. Tailscale
 
 ## Usuwanie, kosz i bezpieczniki
 
-- Plik jest usuwany dopiero wtedy, gdy utworu nie ma już w **żadnej** synchronizowanej playliście.
-  Piosenka, która jest w dwóch playlistach, zostaje, gdy usuniesz ją z jednej z nich.
+- Usunięcie utworu z playlisty w YouTube Music usuwa go z folderu tej playlisty. Sam pobrany plik trafia
+  do kosza dopiero wtedy, gdy utworu nie ma już w żadnej synchronizowanej playliście.
 - Usunięte pliki trafiają do `.ytmd-trash/` (ukryty przed serwerami multimediów) i są kasowane po okresie
   przechowywania. Strona **Trash** pokazuje je; możesz usunąć je od razu albo opróżnić kosz.
 - Jeśli utwór wróci na playlistę, zostanie przywrócony z kosza zamiast pobierany ponownie.

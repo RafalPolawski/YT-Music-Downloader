@@ -76,6 +76,7 @@ def normalize_track(t: dict) -> dict | None:
         "video_type": t.get("videoType"),
         "explicit": bool(t.get("isExplicit")),
         "available": t.get("isAvailable", True) is not False,
+        "set_video_id": t.get("setVideoId"),
     }
 
 
@@ -174,6 +175,13 @@ class YTMusicClient:
                 for t in data.get("tracks") or []
             ],
         }
+
+    def remove_from_playlist(self, playlist_id: str, video_id: str, set_video_id: str) -> None:
+        """Remove one entry of an owned playlist on YouTube Music."""
+        result = self._call(self.yt.remove_playlist_items, playlist_id,
+                            [{"videoId": video_id, "setVideoId": set_video_id}])
+        if "SUCCEEDED" not in str(result):
+            raise RuntimeError(f"YouTube Music did not confirm the removal: {result}")
 
     def watch_info(self, video_id: str) -> dict:
         """Lyrics id and (for music videos) the matching album track."""

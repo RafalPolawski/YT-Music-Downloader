@@ -117,7 +117,7 @@ def validate_ytdlp_args(value: str) -> str:
 
 
 AudioFormat = Literal["opus", "m4a", "mp3"]
-Layout = Literal["artist_album", "artist", "flat"]
+Layout = Literal["playlist", "artist_album", "artist", "flat"]
 
 
 class Settings(BaseModel):
@@ -139,7 +139,7 @@ class Settings(BaseModel):
     max_attempts: int = Field(5, ge=1, le=50)
 
     # Library
-    layout: Layout = "artist_album"
+    layout: Layout = "playlist"
     playlists_dir: str = "Playlists"
     write_lyrics: bool = True
     write_album_covers: bool = True

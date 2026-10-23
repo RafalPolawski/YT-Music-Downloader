@@ -50,17 +50,23 @@ def primary(names: list[str] | None, fallback: str = "Unknown Artist") -> str:
     return names[0] if names else fallback
 
 
-def track_relpath(track: dict, layout: str, ext: str) -> str:
-    """Relative path (POSIX separators, without collision suffix) for a track."""
+def track_relpath(track: dict, layout: str, ext: str, playlist_folder: str | None = None) -> str:
+    """Relative path (POSIX separators, without collision suffix) for a track.
+
+    ``playlist_folder`` is the (already sanitized) folder of the track's playlist and is only
+    used by the ``playlist`` layout.
+    """
     title = sanitize(track.get("title"), "Unknown Title")
     artists = track.get("artists") or []
     album = track.get("album")
     album_artist = primary(track.get("album_artists") or artists)
     ext = ext.lstrip(".")
 
+    joined = sanitize(", ".join(artists) if artists else "Unknown Artist")
+    if layout == "playlist":
+        return f"{playlist_folder or 'Unsorted'}/{title}.{ext}"
     if layout == "flat":
-        joined = ", ".join(artists) if artists else "Unknown Artist"
-        return f"{sanitize(joined)} - {title}.{ext}"
+        return f"{joined} - {title}.{ext}"
     if layout == "artist":
         return f"{sanitize(primary(artists))}/{title}.{ext}"
     # artist_album (default)
@@ -69,6 +75,15 @@ def track_relpath(track: dict, layout: str, ext: str) -> str:
         prefix = f"{int(number):02d} " if number else ""
         return f"{sanitize(album_artist)}/{sanitize(album)}/{prefix}{title}.{ext}"
     return f"{sanitize(primary(artists))}/Singles/{title}.{ext}"
+
+
+def alternative_relpath(track: dict, relpath: str) -> str | None:
+    """Same path with the artists added to the name, used when two different songs collide."""
+    artists = track.get("artists") or []
+    if not artists:
+        return None
+    stem, dot, ext = relpath.rpartition(".")
+    return f"{stem} ({sanitize(', '.join(artists))}).{ext}" if dot else None
 
 
 def with_suffix_tag(relpath: str, tag: str) -> str:
@@ -83,13 +98,16 @@ class PathAllocator:
         self._used: dict[str, str] = {}
         self._lock = threading.Lock()
 
-    def claim(self, video_id: str, relpath: str) -> str:
+    def claim(self, video_id: str, relpath: str, alternative: str | None = None) -> str:
+        """``relpath`` if free, else ``alternative`` (e.g. with the artist added), else a tagged name."""
         with self._lock:
-            key = relpath.casefold()
-            owner = self._used.get(key)
-            if owner is None or owner == video_id:
-                self._used[key] = video_id
-                return relpath
+            for candidate in (relpath, alternative):
+                if not candidate:
+                    continue
+                owner = self._used.get(candidate.casefold())
+                if owner is None or owner == video_id:
+                    self._used[candidate.casefold()] = video_id
+                    return candidate
             tagged = with_suffix_tag(relpath, video_id)
             self._used[tagged.casefold()] = video_id
             return tagged
@@ -101,6 +119,18 @@ class PathAllocator:
 
 def sidecars(path: Path) -> list[Path]:
     return [path.with_suffix(ext) for ext in SIDECAR_EXTS if path.with_suffix(ext).exists()]
+
+
+def link_or_copy(src: Path, dst: Path) -> None:
+    """Hard-link ``src`` (and its sidecars) to ``dst``; copy where hard links are not supported."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    pairs = [(side, dst.with_suffix(side.suffix)) for side in sidecars(src)] + [(src, dst)]
+    for a, b in pairs:
+        b.unlink(missing_ok=True)
+        try:
+            os.link(a, b)
+        except OSError:
+            shutil.copy2(a, b)
 
 
 def move_file(src: Path, dst: Path) -> None:

@@ -33,9 +33,13 @@ files on your disk follow.
   additions, removals and re-ordering.
 - 📃 **Playlists as `.m3u8`** in the exact YouTube Music order, with relative paths, so they work in
   Jellyfin, Navidrome, Symfonium (through your server), foobar2000, VLC…
-- 🗂️ **A real music library, not a pile of files** – every track is stored once (even if it is in ten
-  playlists) in `Artist/Album/01 Title.opus`, tagged with artist, album artist, album, year, track number,
-  embedded cover art, `cover.jpg` per album and lyrics (synced `.lrc` when available).
+- 🗂️ **Your playlists as folders** – by default every playlist is a folder (`Road Trip/Digital Love.opus`),
+  exactly like on YouTube Music. A song in several playlists is downloaded once and hard-linked into each
+  folder. Prefer a classic library? Switch to `Artist/Album/01 Title.opus` with one click.
+- 🏷️ **Proper tags** – artist, album artist, album, year, track number, embedded cover art and lyrics
+  (synced `.lrc` when available).
+- 🔍 **Duplicate finder** – lists songs that are in the same playlist twice (or as video and album
+  version); remove them in the YouTube Music app or with one click in the UI.
 - 🎬 **Album versions instead of music videos** – if a playlist contains a music video, the clean album
   track is downloaded instead (configurable).
 - 🎧 **Best quality without re-encoding** – Opus (default) or M4A are the original YouTube streams;
@@ -158,35 +162,36 @@ See [Jellyfin & Symfonium](#jellyfin--symfonium) below.
 
 ```text
 music/
-├── Daft Punk/
-│   └── Discovery/
-│       ├── 03 Digital Love.opus
-│       ├── 03 Digital Love.lrc        ← synced lyrics (when available)
-│       └── cover.jpg
-├── Bonobo/
-│   └── Singles/                       ← tracks without an album
-│       └── Kong.opus
+├── Road Trip/                         ← one folder per playlist (default layout)
+│   ├── Digital Love.opus
+│   ├── Digital Love.lrc               ← synced lyrics (when available)
+│   └── Kong.opus
+├── Deep Focus/
+│   └── Kong.opus                      ← same song in two playlists: hard link, no extra space
 ├── Playlists/
-│   ├── Road Trip.m3u8
+│   ├── Road Trip.m3u8                 ← track order exactly as on YouTube Music
 │   └── Deep Focus.m3u8
 ├── .ytmd-trash/                       ← hidden: removed tracks, purged after 30 days
 └── .ytmd-tmp/                         ← hidden: downloads in progress
 ```
 
-A playlist file looks like this — order is the YouTube Music order, paths are relative so it works no matter
+File names are just the song title; if two different songs in one playlist share a title, the artist is
+added (`Kong (Bonobo).opus`). A playlist file looks like this — paths are relative so it works no matter
 where the folder is mounted:
 
 ```text
 #EXTM3U
 #PLAYLIST:Road Trip
 #EXTINF:301,Daft Punk - Digital Love
-../Daft Punk/Discovery/03 Digital Love.opus
+../Road Trip/Digital Love.opus
 #EXTINF:244,Bonobo - Kong
-../Bonobo/Singles/Kong.opus
+../Road Trip/Kong.opus
 ```
 
-The folder layout can be switched in Settings (`Artist/Album/Track`, `Artist/Track` or one flat folder);
-existing files are moved automatically.
+**Other layouts** (Settings → Library): `Artist/Album/01 Title` — the classic library that gives the cleanest
+album and artist views in Jellyfin/Navidrome/Plex, plus `Artist/Title` and one flat folder. Saving a different
+layout reorganizes the existing files right away, nothing is downloaded again. Hard links need the music folder
+on one disk; where they are not supported (some network shares) a normal copy is made.
 
 ## Jellyfin & Symfonium
 
@@ -233,7 +238,7 @@ Almost everything is configured in the web UI and stored in `config/settings.jso
 | Format | Opus | `opus` / `m4a` (original streams) or `mp3` (re-encoded V0). |
 | Prefer album versions | on | Download the album track instead of a music video. |
 | Lyrics / album covers | on | Embedded lyrics + `.lrc`, `cover.jpg` per album folder. |
-| Folder layout | Artist/Album/Track | Also `Artist/Track` or one flat folder. |
+| Folder layout | Playlist/Track | Also `Artist/Album/Track`, `Artist/Track` or one flat folder. |
 | Playlist files folder | `Playlists` | Where the `.m3u8` files go (inside the music folder). |
 | Keep removed tracks for | 30 days | `0` deletes immediately. |
 | Safety net | 50 % / 10 tracks | Hold removals when a playlist suddenly loses this much. |
@@ -258,8 +263,8 @@ and don't expose port 8080 to the internet (use a VPN such as Tailscale for remo
 
 ## Removals, trash and safety nets
 
-- A file is removed only when its track is no longer in **any** synced playlist. A song that is in two
-  playlists stays when you remove it from one of them.
+- Removing a song from a playlist on YouTube Music removes it from that playlist's folder. The downloaded
+  file itself goes to the trash only when the song is in no synced playlist any more.
 - Removed files go to `.ytmd-trash/` (hidden from media servers) and are deleted after the retention period.
   The **Trash** page lists them; you can delete them right away or empty the trash.
 - If a track comes back to a playlist, it is restored from the trash instead of being downloaded again.

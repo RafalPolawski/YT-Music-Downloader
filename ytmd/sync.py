@@ -32,6 +32,7 @@ from ytmd.downloader import (CANCELLED, NEEDS_LOGIN, RATE_LIMITED, UNAVAILABLE, 
                              DownloadOptions, Progress, clean_work_dir, download_audio)
 from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_file, prune_parents,
                           remove_with_sidecars, render_m3u8, sanitize, track_relpath, with_suffix_tag,
+                          alternative_relpath, link_or_copy,
                           write_if_changed)
 from ytmd.tagger import TrackTags, audio_info, fetch_image, square_jpeg, to_lrc, write_tags
 from ytmd.ytmusic import (LIKED_MUSIC_ID, VIDEO_TYPE_SONG, AuthError, YTMusicClient, auth_mode, make_client,
@@ -160,6 +161,8 @@ class SyncEngine:
         self._cover_cache: dict[str, bytes | None] = {}
         self._cover_lock = threading.Lock()
         self.allocator = PathAllocator()
+        self._folders: dict[str, str] = {}       # playlist id -> folder / .m3u8 name
+        self._member_of: dict[str, list[str]] = {}  # video id -> active playlist ids, library order
         self._recover_staging()
 
     # ------------------------------------------------------------------ public API
@@ -312,7 +315,7 @@ class SyncEngine:
                 if self.db.track(t["video_id"]) is None:
                     summary.new_tracks += 1
                 self.db.upsert_track_from_playlist(t)
-            self.db.set_playlist_tracks(p["id"], new_ids)
+            self.db.set_playlist_tracks(p["id"], [(t["video_id"], t.get("set_video_id")) for t in tracks])
             self.db.update_playlist(p["id"], fetched=1, last_synced_at=time.time(), last_error=None,
                                     held_removals=0, approve_removals=0,
                                     remote_count=len(new_ids))
@@ -344,6 +347,7 @@ class SyncEngine:
             else:
                 self.db.delete_track(t["video_id"])
 
+        self._load_layout_context()
         allocator = PathAllocator()
         referenced = self.db.referenced_tracks()
         downloaded = sorted((t for t in referenced if t["status"] == dbm.DOWNLOADED),
@@ -356,7 +360,7 @@ class SyncEngine:
                                      next_attempt_at=None)
                 continue
             ext = PurePosixPath(t["path"]).suffix
-            desired = allocator.claim(t["video_id"], track_relpath(t, settings.layout, ext))
+            desired = allocator.claim(t["video_id"], *self._track_path(t, settings, ext))
             if desired != t["path"]:
                 relocations.append((t, desired))
         summary.relocated += self._relocate(relocations, settings)
@@ -365,7 +369,7 @@ class SyncEngine:
             if t["status"] != dbm.TRASHED:
                 continue
             ext = PurePosixPath(t["trash_path"] or "x.opus").suffix
-            desired = allocator.claim(t["video_id"], track_relpath(t, settings.layout, ext))
+            desired = allocator.claim(t["video_id"], *self._track_path(t, settings, ext))
             if t["trash_path"] and not (music / desired).exists() and self.trash.restore(t["trash_path"], music / desired):
                 self.db.update_track(t["video_id"], status=dbm.DOWNLOADED, path=desired, trash_path=None,
                                      trashed_at=None)
@@ -379,6 +383,7 @@ class SyncEngine:
 
     def _remove_track_file(self, t: dict, settings: Settings) -> None:
         music = self.music_dir
+        self._drop_copies(t["video_id"])
         src = music / t["path"]
         trash_rel = None
         if settings.trash_retention_days > 0:
@@ -394,6 +399,77 @@ class SyncEngine:
         where = "moved to trash" if trash_rel else "deleted"
         self.db.add_event("info", f"Removed ({where}): {self._label(t)}")
         log.info("Removed %s (%s)", t["path"], where)
+
+    def _load_layout_context(self) -> None:
+        self._folders = self._playlist_names()
+        member_of: dict[str, list[str]] = {}
+        for m in self.db.active_memberships():
+            member_of.setdefault(m["video_id"], []).append(m["playlist_id"])
+        self._member_of = member_of
+
+    def _track_path(self, t: dict, settings: Settings, ext: str) -> tuple[str, str | None]:
+        """Desired path of a track's main file, plus a readable alternative for name collisions."""
+        if settings.layout != "playlist":
+            return track_relpath(t, settings.layout, ext), None
+        playlists = self._member_of.get(t["video_id"]) or []
+        rel = track_relpath(t, "playlist", ext, self._folders.get(playlists[0]) if playlists else None)
+        return rel, alternative_relpath(t, rel)
+
+    def _drop_copies(self, video_id: str) -> None:
+        for c in self.db.copies(video_id):
+            f = self.music_dir / c["path"]
+            remove_with_sidecars(f)
+            prune_parents(f.parent, self.music_dir)
+            self.db.delete_copy(c["video_id"], c["playlist_id"])
+
+    def _sync_copies(self, settings: Settings) -> int:
+        """Playlist layout: a track in several playlists gets its own file in every playlist folder.
+
+        The first playlist holds the downloaded file; the others get a hard link (or a copy
+        where links are not supported), so nothing is downloaded twice.
+        """
+        music = self.music_dir
+        existing = {(c["video_id"], c["playlist_id"]): c["path"] for c in self.db.copies()}
+        wanted: dict[tuple[str, str], str] = {}
+        downloaded = {t["video_id"]: t for t in self.db.downloaded_tracks() if t["path"]}
+        if settings.layout == "playlist":
+            self._load_layout_context()
+            allocator = PathAllocator()
+            for t in downloaded.values():
+                allocator.claim(t["video_id"], t["path"])
+            for vid, playlists in self._member_of.items():
+                t = downloaded.get(vid)
+                if t is None:
+                    continue
+                ext = PurePosixPath(t["path"]).suffix
+                for pid in playlists[1:]:
+                    rel = track_relpath(t, "playlist", ext, self._folders.get(pid))
+                    wanted[(vid, pid)] = allocator.claim(vid, rel, alternative_relpath(t, rel))
+
+        changed = 0
+        for key, path in existing.items():
+            if wanted.get(key) != path:
+                f = music / path
+                remove_with_sidecars(f)
+                prune_parents(f.parent, music)
+                self.db.delete_copy(*key)
+                changed += 1
+        for (vid, pid), path in wanted.items():
+            target = music / path
+            if existing.get((vid, pid)) == path and target.exists():
+                continue
+            source = music / downloaded[vid]["path"]
+            if not source.exists():
+                continue
+            if target.exists():
+                info = audio_info(target)
+                if not info or info["video_id"] != vid:
+                    log.warning("Not replacing %s: the file belongs to something else", path)
+                    continue
+            link_or_copy(source, target)
+            self.db.set_copy(vid, pid, path)
+            changed += 1
+        return changed
 
     def _relocate(self, relocations: list[tuple[dict, str]], settings: Settings) -> int:
         """Move files to new paths in two phases so swaps/chains cannot collide."""
@@ -416,7 +492,11 @@ class SyncEngine:
             prune_parents(src.parent, music)
             staged.append((t, desired, tmp, covers.get(src.parent)))
         for t, desired, tmp, cover in staged:
-            if (music / desired).exists():
+            own_copy = next((c for c in self.db.copies(t["video_id"]) if c["path"] == desired), None)
+            if own_copy:  # the track's own copy in the folder it now moves to
+                remove_with_sidecars(music / desired)
+                self.db.delete_copy(own_copy["video_id"], own_copy["playlist_id"])
+            elif (music / desired).exists():
                 desired = with_suffix_tag(desired, t["video_id"])
             target = music / desired
             move_file(tmp, target)
@@ -446,6 +526,18 @@ class SyncEngine:
         parts = [sanitize(p) for p in rel.parts if p not in ("..", ".")]
         return self.music_dir.joinpath(*parts) if parts else self.music_dir / "Playlists"
 
+    def _playlist_names(self) -> dict[str, str]:
+        """Unique folder / .m3u8 name of every active playlist, assigned in library order."""
+        names, used = {}, set()
+        for p in self.db.active_playlists():
+            base = sanitize(p["title"], "Playlist")
+            name, n = base, 2
+            while name.casefold() in used:
+                name, n = f"{base} ({n})", n + 1
+            used.add(name.casefold())
+            names[p["id"]] = name
+        return names
+
     def _write_playlists(self, settings: Settings, summary: Summary) -> None:
         pl_dir = self._playlists_dir(settings)
         previous_dir = self.db.get_kv("playlists_dir")
@@ -457,19 +549,16 @@ class SyncEngine:
             prune_parents(Path(previous_dir), self.music_dir)
         self.db.set_kv("playlists_dir", str(pl_dir))
 
-        used: set[str] = set()
+        summary.playlist_files_changed += self._sync_copies(settings)
+        names = self._playlist_names()
         active_ids = set()
         for p in self.db.active_playlists():
             active_ids.add(p["id"])
-            base = sanitize(p["title"], "Playlist")
-            name, n = base, 2
-            while name.casefold() in used:
-                name, n = f"{base} ({n})", n + 1
-            used.add(name.casefold())
-            file_name = f"{name}.m3u8"
+            file_name = f"{names[p['id']]}.m3u8"
             if p["file_name"] and p["file_name"] != file_name:
                 (pl_dir / p["file_name"]).unlink(missing_ok=True)
-            entries = [e for e in self.db.playlist_entries(p["id"]) if e["status"] == dbm.DOWNLOADED and e["path"]]
+            entries = [{**e, "path": e["copy_path"] or e["path"]} for e in self.db.playlist_entries(p["id"])
+                       if e["status"] == dbm.DOWNLOADED and e["path"]]
             if not entries and not (pl_dir / file_name).exists() and not p["fetched"]:
                 continue
             if write_if_changed(pl_dir / file_name, render_m3u8(p["title"], entries, pl_dir, self.music_dir)):
@@ -557,7 +646,7 @@ class SyncEngine:
         relpath = None
         try:
             t = {**t, **self._resolve_metadata(client, settings, t)}
-            relpath = self.allocator.claim(vid, track_relpath(t, settings.layout, settings.audio_format))
+            relpath = self.allocator.claim(vid, *self._track_path(t, settings, settings.audio_format))
             target = self.music_dir / relpath
             if target.exists():
                 info = audio_info(target)
@@ -737,7 +826,8 @@ class SyncEngine:
             if not current.exists():
                 return
             self.allocator.release(t["path"])
-            relpath = self.allocator.claim(t["video_id"], track_relpath(t, settings.layout, current.suffix))
+            self._drop_copies(t["video_id"])  # recreated from the re-tagged file
+            relpath = self.allocator.claim(t["video_id"], *self._track_path(t, settings, current.suffix))
             target = self.music_dir / relpath
             if target.exists() and relpath != t["path"]:
                 self.allocator.release(relpath)
