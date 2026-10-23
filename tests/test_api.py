@@ -158,6 +158,41 @@ def test_oauth_device_flow(api, monkeypatch):
     assert not ctx.env.auth_file.exists()  # switching methods replaces the old credentials
 
 
+def test_duplicate_is_removed_on_youtube_music(api):
+    ctx, c = api()
+    ctx.env.auth_file.write_text("{}")
+    fake = FakeClient()
+    fake.add_playlist("PL1", "Road Trip", [track("a1", "Song", ["Artist"]), track("a1", "Song", ["Artist"])])
+    fake.add_playlist("SAVED", "Someone's mix", [track("b1", "Other", ["X"]), track("b1", "Other", ["X"])],
+                      owned=False)
+    ctx.engine.client_factory = lambda s: fake
+    ctx.client = lambda: fake
+    ctx.engine.run("test")
+    groups = c.get("/api/duplicates").json()
+    road = next(g for g in groups if g["playlist"] == "Road Trip")
+    saved = next(g for g in groups if g["playlist"] == "Someone's mix")
+    assert road["editable"] and not saved["editable"]
+    dup = road["items"][1]
+    r = c.post("/api/duplicates/remove", json={"playlist_id": "PL1", "video_id": "a1",
+                                               "set_video_id": dup["set_video_id"]})
+    assert r.status_code == 200, r.text
+    assert fake.removed == [("PL1", "a1", "PL1:1")]
+    assert all(g["playlist"] != "Road Trip" for g in c.get("/api/duplicates").json())
+    blocked = c.post("/api/duplicates/remove", json={"playlist_id": "SAVED", "video_id": "b1",
+                                                     "set_video_id": "SAVED:1"})
+    assert blocked.status_code == 400
+
+
+def test_layout_change_starts_a_sync(api):
+    ctx, c = api()
+    ctx.env.auth_file.write_text("{}")
+    triggered = []
+    ctx.scheduler.trigger = lambda reason="manual": triggered.append(reason) or True
+    c.put("/api/settings", json={"layout": "artist_album"})
+    c.put("/api/settings", json={"sync_interval_minutes": 30})
+    assert triggered == ["library layout changed"]
+
+
 def test_connect_rejects_bad_headers(api):
     ctx, c = api()
     r = c.post("/api/auth", json={"headers": "accept: */*"})

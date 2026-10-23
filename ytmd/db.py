@@ -66,9 +66,19 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
     playlist_id TEXT NOT NULL,
     position    INTEGER NOT NULL,
     video_id    TEXT NOT NULL,
+    set_video_id TEXT,
     PRIMARY KEY (playlist_id, position)
 );
 CREATE INDEX IF NOT EXISTS idx_pt_video ON playlist_tracks(video_id);
+
+-- Extra files of a track that is in several playlists ("playlist" layout): the first
+-- playlist holds tracks.path, every other one gets a hard link or copy listed here.
+CREATE TABLE IF NOT EXISTS track_copies (
+    video_id    TEXT NOT NULL,
+    playlist_id TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    PRIMARY KEY (video_id, playlist_id)
+);
 
 CREATE TABLE IF NOT EXISTS albums (
     id         TEXT PRIMARY KEY,
@@ -129,6 +139,13 @@ class Database:
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.executescript(SCHEMA)
+            self._migrate()
+
+    def _migrate(self) -> None:
+        """Add columns introduced after a database was created."""
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(playlist_tracks)")}
+        if "set_video_id" not in cols:
+            self._conn.execute("ALTER TABLE playlist_tracks ADD COLUMN set_video_id TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -247,14 +264,23 @@ class Database:
         )
         return [r["video_id"] for r in rows]
 
-    def set_playlist_tracks(self, playlist_id: str, video_ids: list[str]) -> None:
+    def set_playlist_tracks(self, playlist_id: str, items: list[str | tuple[str, str | None]]) -> None:
+        """Replace a playlist's entries; items are video ids or (video_id, set_video_id) pairs."""
+        rows = []
+        for i, item in enumerate(items):
+            vid, set_vid = (item, None) if isinstance(item, str) else item
+            rows.append((playlist_id, i, vid, set_vid))
         with self.transaction():
             self._exec("DELETE FROM playlist_tracks WHERE playlist_id = ?", (playlist_id,))
             with self._lock:
                 self._conn.executemany(
-                    "INSERT INTO playlist_tracks(playlist_id, position, video_id) VALUES(?, ?, ?)",
-                    [(playlist_id, i, vid) for i, vid in enumerate(video_ids)],
+                    "INSERT INTO playlist_tracks(playlist_id, position, video_id, set_video_id) VALUES(?, ?, ?, ?)",
+                    rows,
                 )
+
+    def remove_playlist_entry(self, playlist_id: str, set_video_id: str) -> int:
+        return self._exec("DELETE FROM playlist_tracks WHERE playlist_id = ? AND set_video_id = ?",
+                          (playlist_id, set_video_id))
 
     def clear_inactive_memberships(self) -> int:
         return self._exec(
@@ -265,7 +291,9 @@ class Database:
     def playlist_entries(self, playlist_id: str) -> list[dict]:
         """Ordered tracks of a playlist, joined with their local state."""
         return self._all(
-            """SELECT t.*, pt.position FROM playlist_tracks pt JOIN tracks t ON t.video_id = pt.video_id
+            """SELECT t.*, pt.position, pt.set_video_id, c.path AS copy_path
+               FROM playlist_tracks pt JOIN tracks t ON t.video_id = pt.video_id
+               LEFT JOIN track_copies c ON c.video_id = pt.video_id AND c.playlist_id = pt.playlist_id
                WHERE pt.playlist_id = ? ORDER BY pt.position""",
             (playlist_id,),
         )
@@ -330,7 +358,33 @@ class Database:
         self._exec(f"UPDATE tracks SET {cols} WHERE video_id = ?", (*fields.values(), video_id))
 
     def delete_track(self, video_id: str) -> None:
+        self._exec("DELETE FROM track_copies WHERE video_id = ?", (video_id,))
         self._exec("DELETE FROM tracks WHERE video_id = ?", (video_id,))
+
+    def active_memberships(self) -> list[dict]:
+        """(video_id, playlist_id) pairs of active playlists, in library and playlist order."""
+        return self._all(
+            f"""SELECT pt.video_id, p.id AS playlist_id, p.library_position, MIN(pt.position) AS position
+                FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id
+                WHERE {ACTIVE_PLAYLIST}
+                GROUP BY pt.video_id, p.id
+                ORDER BY p.library_position, position"""
+        )
+
+    def copies(self, video_id: str | None = None) -> list[dict]:
+        if video_id:
+            return self._all("SELECT * FROM track_copies WHERE video_id = ?", (video_id,))
+        return self._all("SELECT * FROM track_copies")
+
+    def set_copy(self, video_id: str, playlist_id: str, path: str) -> None:
+        self._exec(
+            """INSERT INTO track_copies(video_id, playlist_id, path) VALUES(?, ?, ?)
+               ON CONFLICT(video_id, playlist_id) DO UPDATE SET path = excluded.path""",
+            (video_id, playlist_id, path),
+        )
+
+    def delete_copy(self, video_id: str, playlist_id: str) -> None:
+        self._exec("DELETE FROM track_copies WHERE video_id = ? AND playlist_id = ?", (video_id, playlist_id))
 
     def referenced_tracks(self) -> list[dict]:
         """Tracks that belong to at least one active playlist (ordered by first appearance)."""
