@@ -548,7 +548,7 @@ const Duplicates = {
       <div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2>
         <span class="badge ${g.kind === "same" ? "warning" : "info"}">${g.kind === "same" ? "Same song added twice" : "Same song, different versions"}</span></div>
         <p class="small muted" style="margin:-6px 0 12px">The suggestion keeps ${g.kind === "same" ? "the first entry" : "the album version"}, but you can remove whichever you like.</p>
-        <div class="table-wrap" style="box-shadow:none"><table><tbody>${g.items.map((it, ii) => `
+        <div class="table-wrap" style="box-shadow:none"><table class="dup-table"><tbody>${g.items.map((it, ii) => `
           <tr><td><div class="cell-track">${thumbHtml(it.thumbnail)}<div>
               <div class="t">${esc(it.title)}</div><div class="a">${esc((it.artists || []).join(", "))}${it.album ? ` · ${esc(it.album)}` : ""}</div></div></div></td>
             <td class="small muted nowrap">#${it.position}</td>
