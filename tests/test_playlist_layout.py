@@ -36,7 +36,7 @@ def test_every_playlist_gets_its_own_folder(h):
                                "Chill/Kong.opus", "Chill/Teardrop.opus"}
     assert h.m3u8("Road Trip") == ["../Road Trip/Digital Love.opus", "../Road Trip/Kong.opus"]
     assert h.m3u8("Chill") == ["../Chill/Kong.opus", "../Chill/Teardrop.opus"]
-    assert not (h.music / "Road Trip/cover.jpg").exists()
+    assert (h.music / "Road Trip/cover.jpg").read_bytes()[:2] == b"\xff\xd8"  # generated playlist cover
 
 
 def test_copy_shares_the_downloaded_file(h):
@@ -147,3 +147,41 @@ def test_old_databases_are_migrated(tmp_path):
     db.set_playlist_tracks("PL", [("v", "s1")])
     assert db._one("SELECT set_video_id FROM playlist_tracks")["set_video_id"] == "s1"
     db.close()
+
+
+def test_playlist_cover_is_not_carried_into_album_folders(h):
+    h.sync()
+    h.settings.update({"layout": "artist_album"})
+    h.sync()
+    from PIL import Image
+    cover = h.music / "Daft Punk/Discovery/cover.jpg"
+    assert cover.exists()  # written from the album art, not the playlist cover
+    assert Image.open(cover).size == (360, 360)  # the fake album art, cropped square
+    assert not (h.music / "Road Trip").exists()
+
+
+def test_no_generated_covers_when_disabled(h):
+    h.settings.update({"write_album_covers": False})
+    h.sync()
+    assert not (h.music / "Road Trip/cover.jpg").exists()
+
+
+def test_generated_cover_handles_polish_and_emoji():
+    import io
+
+    from PIL import Image
+
+    from ytmd.covers import playlist_cover
+    img = Image.open(io.BytesIO(playlist_cover("Ameryka Południowa ☕", size=300)))
+    assert img.size == (300, 300) and img.format == "JPEG"
+
+
+def test_music_video_with_an_unrelated_counterpart_is_kept(harness):
+    h = harness
+    h.client.add_playlist("PL1", "Videos", [track("omv1", "Hit (Official Video)", ["Star"],
+                                                  video_type="MUSIC_VIDEO_TYPE_OMV")])
+    h.client.watch["omv1"] = {"lyrics_id": None,
+                              "counterpart": track("atv9", "Hit (Remix)", ["Someone"], "Club Hits 2020", "MPREc")}
+    h.sync()
+    assert h.downloader.calls == ["omv1"]
+    assert h.db.track("omv1")["album"] is None

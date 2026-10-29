@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 import os
 import secrets
@@ -10,9 +11,11 @@ import time
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+import requests
 from pydantic import ValidationError
+from urllib.parse import urlparse
 
 from ytmd import __version__
 from ytmd import db as dbm
@@ -30,6 +33,8 @@ log = logging.getLogger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
 SECRET_MASK = "********"
 FIRST_SYNC_DELAY = 300
+# Thumbnails are fetched by the server (and cached) so browsers with tracker blocking still show them.
+THUMB_HOSTS = ("googleusercontent.com", "ggpht.com", "ytimg.com")
 
 
 def create_app(ctx) -> FastAPI:
@@ -208,6 +213,28 @@ def create_app(ctx) -> FastAPI:
         for t in db.tracks_by_status(dbm.FAILED):
             db.update_track(t["video_id"], status=dbm.PENDING, attempts=0, next_attempt_at=None, last_error=None)
         return {"ok": True}
+
+    # ------------------------------------------------------------------ thumbnails
+    thumb_dir = env.config_dir / "cache" / "thumbs"
+
+    @app.get("/api/thumb")
+    def thumb(url: str):
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+        if parsed.scheme != "https" or not any(host == h or host.endswith("." + h) for h in THUMB_HOSTS):
+            raise HTTPException(status_code=400, detail="Not a YouTube image")
+        path = thumb_dir / f"{hashlib.sha1(url.encode()).hexdigest()}.img"
+        if not path.exists():
+            try:
+                r = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+                r.raise_for_status()
+            except requests.RequestException:
+                raise HTTPException(status_code=404, detail="Image not available")
+            thumb_dir.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_bytes(r.content)
+            tmp.replace(path)
+        return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
 
     # ------------------------------------------------------------------ duplicates
     @app.get("/api/duplicates")

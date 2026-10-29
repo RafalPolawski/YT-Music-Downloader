@@ -206,6 +206,12 @@ on one disk; where they are not supported (some network shares) a normal copy is
 4. In **Symfonium**, add your Jellyfin server as a media provider. Playlists and new tracks appear after the
    next provider sync.
 
+**Covers in the playlist layout:** Jellyfin treats every folder as one album, so the songs of a playlist
+folder share that album's picture — which can look like "wrong" covers on some songs. To make it
+intentional, the app puts a generated `cover.jpg` with the playlist name into every playlist folder (Settings
+→ *Folder covers*). The real cover of each song stays embedded in its file; if you want Jellyfin and Symfonium
+to show per-album artwork everywhere, use the `Artist/Album/Track` layout.
+
 **Navidrome** works the same way — it imports `.m3u8` playlists from the music folder automatically.
 
 ## Running 24/7 on a Mac mini (Apple Silicon)
