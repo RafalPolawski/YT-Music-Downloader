@@ -4,12 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.1] - 2026-10-29
 
 ### Fixed
 
 - Tracks, Duplicates and Trash pages no longer overflow the screen on phones; wide tables scroll inside
   their card and duplicate entries stack vertically.
+
+### Changed
+
+- README: a tour of every page with new screenshots, a highlights overview and a short FAQ.
 
 ## [1.2.0] - 2026-10-29
 
@@ -84,6 +88,7 @@ YouTube Music playlists mirrored to a folder on your disk.
   instead of one folder per playlist, so start with an empty music folder. The old
   `headers.json` can be pasted into the new UI to connect your account.
 
+[1.2.1]: https://github.com/RafalPolawski/YT-Music-Downloader/releases/tag/v1.2.1
 [1.2.0]: https://github.com/RafalPolawski/YT-Music-Downloader/releases/tag/v1.2.0
 [1.1.0]: https://github.com/RafalPolawski/YT-Music-Downloader/releases/tag/v1.1.0
 [1.0.1]: https://github.com/RafalPolawski/YT-Music-Downloader/releases/tag/v1.0.1
