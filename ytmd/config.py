@@ -158,6 +158,7 @@ class Settings(BaseModel):
     ytdlp_auto_update: bool = True
     ytdlp_extra_args: str = ""
     brand_account_id: str = ""
+    log_retention_days: int = Field(0, ge=0, le=3650)  # 0 keeps log files forever
 
     @field_validator("ytdlp_extra_args")
     @classmethod

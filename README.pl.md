@@ -124,22 +124,32 @@ pokazuje, ile z danej playlisty jest już na dysku, a filtry wyłapują te, któ
 ### Utwory
 
 Wyszukiwanie we wszystkim, co jest synchronizowane, filtry po statusie i playliście, powód nieudanego
-pobrania i ponawianie. Nieudane pobrania są też ponawiane automatycznie, z rosnącymi odstępami.
+pobrania i ponawianie. Nieudane pobrania są też ponawiane automatycznie, z rosnącymi odstępami. Każda
+nazwa playlisty to link, który otwiera utwór w tej playliście w YouTube Music.
 
 <p align="center"><img src="docs/screenshots/tracks.png" alt="Strona Tracks" width="100%"></p>
 
-### Duplikaty
+### Porządki (Cleanup)
 
-Wyszukuje utwory, które są w tej samej playliście dwa razy — ten sam utwór dodany ponownie albo teledysk
-obok wersji z albumu. Podpowiada, który zostawić, ale możesz usunąć dowolny wpis: tutaj (w Twoich
-playlistach) albo w aplikacji YouTube Music. Nic nie jest usuwane automatycznie.
+Dwie listy wpisów, które warto usunąć z playlist w YouTube Music:
 
-<p align="center"><img src="docs/screenshots/duplicates.png" alt="Strona Duplicates" width="100%"></p>
+- **Unavailable** — utwory, których YouTube już nie udostępnia: usunięte, prywatne, zablokowane w Twoim
+  kraju albo wyszarzone. Nie da się ich pobrać, więc tylko zaśmiecają playlistę.
+- **Duplicates** — utwory, które są w tej samej playliście dwa razy: ten sam utwór dodany ponownie albo
+  teledysk obok wersji z albumu. Aplikacja podpowiada, który zostawić, ale możesz usunąć dowolny wpis.
+
+Usuwasz je pojedynczo albo wszystkie naraz jednym kliknięciem (w Twoich playlistach i w Liked Music) albo
+otwierasz wpis w YouTube Music i usuwasz go tam. Nic nie jest usuwane automatycznie, a pliki lokalne
+dostosują się przy kolejnej synchronizacji.
+
+<p align="center"><img src="docs/screenshots/cleanup.png" alt="Strona Cleanup: niedostępne utwory" width="100%"></p>
+<p align="center"><img src="docs/screenshots/duplicates.png" alt="Strona Cleanup: duplikaty" width="100%"></p>
 
 ### Kosz
 
 Utwory usunięte w YouTube Music najpierw trafiają do ukrytego kosza i są kasowane po 30 dniach. Zmienisz
 zdanie? Dodaj utwór z powrotem w YouTube Music, a kolejna synchronizacja go przywróci — bez pobierania.
+Przy każdym wpisie jest link do utworu w YouTube Music.
 
 <p align="center"><img src="docs/screenshots/trash.png" alt="Strona Trash" width="100%"></p>
 
@@ -314,6 +324,7 @@ Prawie wszystko ustawia się w panelu WWW; zapisuje się to w `config/settings.j
 | Parallel downloads / pause | 2 / 3 s | Delikatnie — YouTube limituje agresywne pobieranie. |
 | Download as signed-in user | wył. | Potrzebne dla utworów 18+ i strumieni Premium 256 kb/s. |
 | Jellyfin URL + API key | – | Opcjonalnie: skan biblioteki po każdej synchronizacji. |
+| Keep log files for | na zawsze (`0`) | Logi leżą w `config/logs`, jeden plik dziennie; ustawienie pokazuje, ile zajmują. |
 
 Zmienne środowiskowe (poziom kontenera):
 
@@ -373,10 +384,11 @@ zwalnia.
 | Utwory 18+ / tylko dla Premium się nie pobierają | Włącz *Download as signed-in user* albo wgraj `cookies.txt` (Settings → Downloads). |
 | „Sign-in expired” na dashboardzie | Wklej świeże nagłówki w ustawieniach (pewnie sesja w tej przeglądarce została wylogowana). |
 | Komunikat „music folder is not writable” | Ustaw `PUID`/`PGID` na właściciela folderu. |
-| Utwór ma status *Unavailable* | Jest wyszarzony w YouTube Music (usunięty lub zablokowany regionalnie) — jest pomijany. |
+| Utwór ma status *Unavailable* | Jest wyszarzony w YouTube Music (usunięty lub zablokowany regionalnie) — jest pomijany. Usuniesz go z playlisty na stronie **Cleanup**. |
 | Nagle wiele pobrań kończy się błędem | Zwykle nieaktualny yt-dlp; aktualizuje się codziennie, możesz też kliknąć *Update now* w Settings → Advanced. |
 
-Logi: strona **Logs**, `docker compose logs -f` albo `config/logs/ytmd.log`.
+Logi: strona **Logs** (historia przetrwa restart i aktualizację, starsze dni można tam pobrać),
+`docker compose logs -f` albo dzienne pliki w `config/logs/`.
 
 ## Aktualizacja
 

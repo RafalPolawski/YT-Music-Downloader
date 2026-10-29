@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from tests.conftest import FakeClient, FakeDownloader, track
 from ytmd.app import AppContext
 from ytmd.config import Environment
+from ytmd.downloader import TRANSIENT, UNAVAILABLE, DownloadError
 from ytmd.web.api import SECRET_MASK, create_app
 
 
@@ -74,10 +75,12 @@ def test_playlists_and_tracks_flow(api):
     ctx.engine.run("test")
     tracks = c.get("/api/tracks", params={"status": "downloaded"}).json()
     assert tracks["total"] == 1 and tracks["items"][0]["playlists"] == "Road Trip"
+    assert tracks["items"][0]["playlist_list"] == [{"id": "PL1", "title": "Road Trip"}]
     assert c.patch("/api/playlists/PL1", json={"enabled": False}).json()["enabled"] == 0
     ctx.engine.run("test")
     trash = c.get("/api/trash").json()
     assert len(trash["items"]) == 1
+    assert trash["items"][0]["video_id"] == "a1" and trash["items"][0]["title"] == "Song"
     assert c.delete("/api/trash").json()["removed"] == 1
 
 
@@ -173,14 +176,58 @@ def test_duplicate_is_removed_on_youtube_music(api):
     saved = next(g for g in groups if g["playlist"] == "Someone's mix")
     assert road["editable"] and not saved["editable"]
     dup = road["items"][1]
-    r = c.post("/api/duplicates/remove", json={"playlist_id": "PL1", "video_id": "a1",
-                                               "set_video_id": dup["set_video_id"]})
+    r = c.post("/api/playlist-entries/remove", json={"playlist_id": "PL1", "entries": [
+        {"video_id": "a1", "set_video_id": dup["set_video_id"]}]})
     assert r.status_code == 200, r.text
     assert fake.removed == [("PL1", "a1", "PL1:1")]
     assert all(g["playlist"] != "Road Trip" for g in c.get("/api/duplicates").json())
-    blocked = c.post("/api/duplicates/remove", json={"playlist_id": "SAVED", "video_id": "b1",
-                                                     "set_video_id": "SAVED:1"})
+    blocked = c.post("/api/playlist-entries/remove", json={"playlist_id": "SAVED", "entries": [
+        {"video_id": "b1", "set_video_id": "SAVED:1"}]})
     assert blocked.status_code == 400
+
+
+def test_unavailable_songs_are_found_and_removed(api, audio_samples):
+    ctx, c = api()
+    ctx.env.auth_file.write_text("{}")
+    fake = FakeClient()
+    fake.add_playlist("PL1", "Road Trip", [
+        track("ok1", "Fine", ["A"]), track("grey1", "Greyed out", ["B"], available=False),
+        track("dead1", "Deleted video", ["C"]), track("slow1", "Server hiccup", ["D"])])
+    fake.add_playlist("LM", "Liked Music", [track("ok1", "Fine", ["A"]), track("grey2", "Gone", ["E"], available=False)],
+                      owned=False)
+    fake.add_playlist("SAVED", "Someone's mix", [track("grey3", "Hidden", ["F"], available=False)], owned=False)
+    dl = FakeDownloader(audio_samples)
+    dl.errors["dead1"] = DownloadError(UNAVAILABLE, "[youtube] dead1: Video unavailable. This video has been removed")
+    dl.errors["slow1"] = DownloadError(TRANSIENT, "HTTP Error 503: Service Unavailable")
+    ctx.engine.client_factory = lambda s: fake
+    ctx.engine.download_fn = dl
+    ctx.client = lambda: fake
+    ctx.engine.run("test")
+    ctx.db.update_playlist("LM", enabled=1)
+    fake.tracks["PL1"][0] = track("ok1", "Fine", ["A"], available=False)  # greyed out after it was downloaded
+    ctx.engine.run("test")
+
+    groups = {g["playlist"]: g for g in c.get("/api/unavailable").json()}
+    road = groups["Road Trip"]
+    assert [(i["title"], i["position"]) for i in road["items"]] == [("Greyed out", 2), ("Deleted video", 3)]
+    assert road["items"][1]["reason"] == "Video unavailable. This video has been removed" and road["editable"]
+    assert groups["Liked Music"]["editable"] and not groups["Someone's mix"]["editable"]
+
+    r = c.post("/api/playlist-entries/remove", json={"playlist_id": "PL1", "entries": [
+        {"video_id": i["video_id"], "set_video_id": i["set_video_id"]} for i in road["items"]]})
+    assert r.status_code == 200 and r.json()["removed"] == 2, r.text
+    assert fake.removed == [("PL1", "grey1", "PL1:1"), ("PL1", "dead1", "PL1:2")]
+    # Liked Music: the like is taken back, matched by video id alone
+    r = c.post("/api/playlist-entries/remove", json={"playlist_id": "LM", "entries": [{"video_id": "grey2"}]})
+    assert r.status_code == 200, r.text
+    assert fake.removed[-1][:2] == ("LM", "grey2")
+    assert [g["playlist"] for g in c.get("/api/unavailable").json()] == ["Someone's mix"]
+    assert c.post("/api/playlist-entries/remove", json={"playlist_id": "SAVED", "entries": [
+        {"video_id": "grey3", "set_video_id": "SAVED:0"}]}).status_code == 400
+    assert c.post("/api/playlist-entries/remove", json={"playlist_id": "PL1", "entries": [
+        {"video_id": "grey1", "set_video_id": "PL1:1"}]}).status_code == 400  # already gone
+    assert c.post("/api/playlist-entries/remove", json={"playlist_id": "PL1", "entries": []}).status_code == 400
+    assert c.post("/api/playlist-entries/remove", json={"playlist_id": "PL1", "entries": ["x"]}).status_code == 400
 
 
 def test_layout_change_starts_a_sync(api):

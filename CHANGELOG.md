@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Cleanup** page (replaces *Duplicates*): besides duplicates it lists songs that can no longer be
+  downloaded — deleted, private, region-blocked or greyed out on YouTube Music — per playlist. Remove them
+  one by one or all at once with a click; nothing is removed automatically. Works for your own playlists
+  and Liked Music (the like is taken back).
+- Links to YouTube Music everywhere: every playlist name on the Tracks page opens the song inside that
+  playlist, trash entries link to the song, and Cleanup entries open in their playlist.
+- Logs survive restarts and updates: the Logs page loads its history from disk, log files are kept one
+  per day and can be downloaded from the Logs page.
+- Setting *Keep log files for* (Settings → Advanced, default: forever) with the space logs currently use.
+
+### Fixed
+
+- The account row in Settings no longer overflows the screen on phones.
+
 ## [1.2.1] - 2026-10-29
 
 ### Fixed

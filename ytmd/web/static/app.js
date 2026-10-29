@@ -28,6 +28,7 @@ const ICONS = {
   cloud: '<path d="M18 10h-1.3A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   copy: '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  cleanup: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 1.8 1.8.7-1.8.7L19 20l-.7-1.8-1.8-.7 1.8-.7z"/>',
   restore: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/>',
 };
 const icon = (name, attrs = "") =>
@@ -110,6 +111,14 @@ function imageSrc(url) {
     ? `/api/thumb?url=${encodeURIComponent(url)}` : url;
 }
 
+function ytmUrl(videoId, playlistId) {
+  return `https://music.youtube.com/watch?v=${encodeURIComponent(videoId)}${playlistId ? `&list=${encodeURIComponent(playlistId)}` : ""}`;
+}
+
+function ytmButton(videoId, playlistId, title = "Open on YouTube Music") {
+  return `<a class="btn sm ghost" href="${esc(ytmUrl(videoId, playlistId))}" target="_blank" rel="noopener" title="${esc(title)}">${icon("link")}</a>`;
+}
+
 function thumbHtml(url, cls = "") {
   const img = url ? `<img src="${esc(imageSrc(url))}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<div class="thumb ${cls}">${icon("tracks")}${img}</div>`;
@@ -121,7 +130,7 @@ const NAV = [
   ["dashboard", "Dashboard", "dashboard"],
   ["playlists", "Playlists", "playlists"],
   ["tracks", "Tracks", "tracks"],
-  ["duplicates", "Duplicates", "copy"],
+  ["cleanup", "Cleanup", "cleanup"],
   ["trash", "Trash", "trash"],
   ["logs", "Logs", "logs"],
   ["settings", "Settings", "settings"],
@@ -455,6 +464,7 @@ const Tracks = {
         </div>
         <select id="tr-pl" style="max-width:240px"><option value="">All playlists</option></select>
       </div>
+      <p class="small muted" id="tr-hint" hidden style="margin:-4px 0 14px">Songs YouTube no longer serves can be removed from your playlists on the <a href="#/cleanup">Cleanup</a> page.</p>
       <div class="table-wrap"><table><thead><tr><th>Track</th><th>Album</th><th>Playlists</th><th>Status</th><th></th></tr></thead>
         <tbody id="tr-body"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody></table></div>
       <div class="pager"><span id="tr-count"></span><span class="inline"><button class="btn sm" data-action="prev">Previous</button><button class="btn sm" data-action="next">Next</button></span></div>`;
@@ -489,6 +499,7 @@ const Tracks = {
     if (a === "retry-all") { await act(() => api("/api/tracks/retry-failed", { method: "POST" }), "Failed tracks queued for the next sync"); this.load(); }
   },
   async load() {
+    $("#tr-hint").hidden = !["failed", "unavailable"].includes(this.status);
     const params = new URLSearchParams({ q: $("#tr-q").value, status: this.status, playlist: $("#tr-pl").value, offset: this.offset, limit: this.limit });
     try {
       const r = await api(`/api/tracks?${params}`);
@@ -512,70 +523,127 @@ const Tracks = {
         <td><div class="cell-track">${thumbHtml(t.thumbnail)}<div><div class="t" title="${esc(where || "")}">${esc(t.title)}</div>
           <div class="a">${esc((t.artists || []).join(", "))}</div>${err}</div></div></td>
         <td class="small">${esc(t.album || "")}${t.year ? ` <span class="faint">· ${esc(t.year)}</span>` : ""}</td>
-        <td class="small muted" style="max-width:260px">${esc(t.playlists || "")}</td>
+        <td class="small muted pl-links" style="max-width:260px">${(t.playlist_list || []).map((p) =>
+          `<a href="${esc(ytmUrl(t.video_id, p.id))}" target="_blank" rel="noopener" title="Open in this playlist on YouTube Music">${esc(p.title)}</a>`).join(" • ")}</td>
         <td><span class="badge ${cls}"${retryInfo}>${esc(label)}</span>${t.attempts && t.status === "failed" ? ` <span class="small faint">×${t.attempts}</span>` : ""}</td>
         <td style="text-align:right">${t.status === "failed" ? `<button class="btn sm" data-action="retry" data-id="${esc(t.video_id)}">Retry</button>` : ""}
-          <a class="btn sm ghost" href="https://music.youtube.com/watch?v=${esc(t.video_id)}" target="_blank" rel="noopener" title="Open on YouTube Music">${icon("link")}</a></td>
+          ${ytmButton(t.video_id)}</td>
       </tr>`;
     }).join("");
   },
 };
 
-/* ===================================================================== duplicates */
-const Duplicates = {
-  mount(el) {
+/* ===================================================================== cleanup */
+const CLEANUP_TABS = {
+  unavailable: ["Unavailable", "Songs YouTube no longer serves — deleted, made private, blocked in your country or greyed out. They can't be downloaded, so they only clutter the playlist."],
+  duplicates: ["Duplicates", "Songs that appear more than once in the same playlist — the same video added twice, or the same song in two versions."],
+};
+const Cleanup = {
+  mount(el, params) {
     el.innerHTML = `
-      <div class="page-head"><div><h1>Duplicates</h1><p class="muted">Songs that appear more than once in the same playlist — the same video added twice, or the same song in two versions.</p></div>
+      <div class="page-head"><div><h1>Cleanup</h1><p class="muted">Playlist entries worth removing on YouTube Music.</p></div>
         <span class="spacer"></span><button class="btn" data-action="reload">${icon("refresh")} Check again</button></div>
+      <div class="toolbar"><div class="segmented" id="cl-tabs">
+        ${Object.entries(CLEANUP_TABS).map(([id, [label]]) => `<button data-t="${id}">${label} <span class="faint" id="cl-n-${id}"></span></button>`).join("")}
+      </div></div>
       <div class="callout warning" style="margin-bottom:16px">${icon("alert")}<div><b>Removing happens on YouTube Music.</b>
-        Remove duplicates here or by hand in the YouTube Music app — either way the local file follows at the next sync.
-        Only playlists you own can be edited from here; nothing is ever removed automatically.</div></div>
-      <div id="dup-list" class="stack"><p class="muted">Looking for duplicates…</p></div>`;
+        Remove entries here or by hand in the YouTube Music app — either way the local files follow at the next sync.
+        Your own playlists and Liked Music can be edited from here; nothing is ever removed automatically.</div></div>
+      <p class="small muted" id="cl-intro"></p>
+      <div id="cl-list" class="stack"><p class="muted">Checking your playlists…</p></div>`;
+    this.tab = CLEANUP_TABS[params.get("tab")] ? params.get("tab") : null;
+    this.data = {};
+    $("#cl-tabs").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      this.tab = b.dataset.t; this.render();
+    });
     el.addEventListener("click", (e) => this.onClick(e));
     this.load();
   },
   async load() {
-    try { this.groups = await api("/api/duplicates"); this.render(); }
-    catch (e) { toast(e.message, "error"); }
+    try {
+      const [unavailable, duplicates] = await Promise.all([api("/api/unavailable"), api("/api/duplicates")]);
+      this.data = { unavailable, duplicates };
+      if (!this.tab) this.tab = !unavailable.length && duplicates.length ? "duplicates" : "unavailable";
+      this.render();
+    } catch (e) { toast(e.message, "error"); }
   },
+  removable(g, it) { return g.editable && (g.playlist_id === "LM" || !!it.set_video_id); },
   render() {
-    const box = $("#dup-list");
-    if (!this.groups.length) {
-      box.innerHTML = `<div class="card"><div class="empty">${icon("check")}<p>No duplicates in your synced playlists.</p></div></div>`;
+    const counts = {
+      unavailable: this.data.unavailable.reduce((n, g) => n + g.items.length, 0),
+      duplicates: this.data.duplicates.length,
+    };
+    for (const [id, n] of Object.entries(counts)) $(`#cl-n-${id}`).textContent = n ? fmtNum(n) : "";
+    $$("#cl-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.t === this.tab));
+    $("#cl-intro").textContent = CLEANUP_TABS[this.tab][1];
+    const groups = this.data[this.tab];
+    if (!groups.length) {
+      $("#cl-list").innerHTML = `<div class="card"><div class="empty">${icon("check")}<p>No ${this.tab === "unavailable" ? "unavailable songs" : "duplicates"} in your synced playlists.</p></div></div>`;
       return;
     }
-    box.innerHTML = this.groups.map((g, gi) => `
-      <div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2>
+    $("#cl-list").innerHTML = groups.map((g, gi) => this.tab === "unavailable" ? this.unavailableCard(g, gi) : this.duplicateCard(g, gi)).join("");
+  },
+  trackCell(it, extra = "") {
+    return `<td><div class="cell-track">${thumbHtml(it.thumbnail)}<div>
+      <div class="t">${esc(it.title)}</div><div class="a">${esc((it.artists || []).join(", "))}${it.album ? ` · ${esc(it.album)}` : ""}</div>${extra}</div></div></td>`;
+  },
+  actionCell(g, gi, ii, style = "danger") {
+    const it = g.items[ii];
+    return `<td class="nowrap" style="text-align:right">${ytmButton(it.video_id, g.playlist_id, "Open in this playlist on YouTube Music")}
+      ${!g.editable ? `<span class="small muted">Remove it in the YouTube Music app</span>`
+      : !this.removable(g, it) ? `<span class="small muted">Run a sync first</span>`
+      : `<button class="btn sm ${style}" data-action="remove" data-g="${gi}" data-i="${ii}">${icon("trash")} Remove on YouTube Music</button>`}</td>`;
+  },
+  unavailableCard(g, gi) {
+    const n = g.items.length;
+    const all = g.items.filter((it) => this.removable(g, it)).length;
+    return `<div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2><span class="badge">${fmtNum(n)} unavailable</span>
+        <span class="spacer"></span>
+        <a class="btn sm ghost" href="https://music.youtube.com/playlist?list=${encodeURIComponent(g.playlist_id)}" target="_blank" rel="noopener">${icon("link")} Open playlist</a>
+        ${all > 1 ? `<button class="btn sm danger" data-action="remove-all" data-g="${gi}">${icon("trash")} Remove all ${fmtNum(all)}</button>` : ""}</div>
+      <div class="table-wrap" style="box-shadow:none"><table class="entry-table"><tbody>${g.items.map((it, ii) => `
+        <tr>${this.trackCell(it, `<div class="reason">${esc(it.reason)}</div>`)}
+          <td class="small muted nowrap">#${it.position}</td>
+          ${this.actionCell(g, gi, ii)}</tr>`).join("")}
+      </tbody></table></div></div>`;
+  },
+  duplicateCard(g, gi) {
+    return `<div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2>
         <span class="badge ${g.kind === "same" ? "warning" : "info"}">${g.kind === "same" ? "Same song added twice" : "Same song, different versions"}</span></div>
-        <p class="small muted" style="margin:-6px 0 12px">The suggestion keeps ${g.kind === "same" ? "the first entry" : "the album version"}, but you can remove whichever you like.</p>
-        <div class="table-wrap" style="box-shadow:none"><table class="dup-table"><tbody>${g.items.map((it, ii) => `
-          <tr><td><div class="cell-track">${thumbHtml(it.thumbnail)}<div>
-              <div class="t">${esc(it.title)}</div><div class="a">${esc((it.artists || []).join(", "))}${it.album ? ` · ${esc(it.album)}` : ""}</div></div></div></td>
-            <td class="small muted nowrap">#${it.position}</td>
-            <td class="small nowrap">${it.album_version ? "Album version" : "Music video / upload"}</td>
-            <td class="nowrap">${it.keep ? `<span class="badge success">Suggested to keep</span>` : `<span class="badge warning">Suggested to remove</span>`}</td>
-            <td style="text-align:right">${!g.editable ? `<span class="small muted">Remove it in the YouTube Music app</span>`
-              : !it.set_video_id ? `<span class="small muted">Run a sync first</span>`
-              : `<button class="btn sm ${it.keep ? "ghost" : "danger"}" data-action="remove" data-g="${gi}" data-i="${ii}">${icon("trash")} Remove on YouTube Music</button>`}</td></tr>`).join("")}
-        </tbody></table></div></div>`).join("");
+      <p class="small muted" style="margin:-6px 0 12px">The suggestion keeps ${g.kind === "same" ? "the first entry" : "the album version"}, but you can remove whichever you like.</p>
+      <div class="table-wrap" style="box-shadow:none"><table class="entry-table"><tbody>${g.items.map((it, ii) => `
+        <tr>${this.trackCell(it)}
+          <td class="small muted nowrap">#${it.position}</td>
+          <td class="small nowrap">${it.album_version ? "Album version" : "Music video / upload"}</td>
+          <td class="nowrap">${it.keep ? `<span class="badge success">Suggested to keep</span>` : `<span class="badge warning">Suggested to remove</span>`}</td>
+          ${this.actionCell(g, gi, ii, it.keep ? "ghost" : "danger")}</tr>`).join("")}
+      </tbody></table></div></div>`;
   },
   async onClick(e) {
     const b = e.target.closest("[data-action]");
     if (!b) return;
     if (b.dataset.action === "reload") { this.load(); return; }
-    if (b.dataset.action === "remove") {
-      const g = this.groups[+b.dataset.g], it = g.items[+b.dataset.i];
-      const ok = await confirmDialog({
-        title: "Remove from YouTube Music?",
-        body: `<b>${esc(it.title)}</b> (position #${it.position}) will be removed from the playlist <b>${esc(g.playlist)}</b> in your YouTube Music account. The local file is updated at the next sync.`,
-        confirm: "Remove on YouTube Music", danger: true,
-      });
-      if (!ok) return;
-      b.disabled = true;
-      const r = await act(() => api("/api/duplicates/remove", { method: "POST", body: { playlist_id: g.playlist_id, video_id: it.video_id, set_video_id: it.set_video_id } }),
-        "Removed on YouTube Music");
-      if (r) this.load(); else b.disabled = false;
-    }
+    const g = this.data[this.tab]?.[+b.dataset.g];
+    if (!g) return;
+    if (b.dataset.action === "remove") this.remove(g, [g.items[+b.dataset.i]], b);
+    if (b.dataset.action === "remove-all") this.remove(g, g.items.filter((it) => this.removable(g, it)), b);
+  },
+  async remove(g, items, button) {
+    const what = items.length === 1 ? `<b>${esc(items[0].title)}</b> (position #${items[0].position})` : `<b>${items.length} songs</b>`;
+    const ok = await confirmDialog({
+      title: "Remove from YouTube Music?",
+      body: g.playlist_id === "LM"
+        ? `${what} will be removed from <b>Liked Music</b> by taking the like back in your YouTube Music account. The local files are updated at the next sync.`
+        : `${what} will be removed from the playlist <b>${esc(g.playlist)}</b> in your YouTube Music account. The local files are updated at the next sync.`,
+      confirm: "Remove on YouTube Music", danger: true,
+    });
+    if (!ok) return;
+    button.disabled = true;
+    const body = { playlist_id: g.playlist_id, entries: items.map((it) => ({ video_id: it.video_id, set_video_id: it.set_video_id })) };
+    const r = await act(() => api("/api/playlist-entries/remove", { method: "POST", body }),
+      items.length === 1 ? "Removed on YouTube Music" : `Removed ${items.length} songs on YouTube Music`);
+    if (r) this.load(); else button.disabled = false;
   },
 };
 
@@ -603,7 +671,8 @@ const Trash = {
         <td class="mono small">${esc(i.path)}</td><td class="nowrap">${fmtBytes(i.size)}</td>
         <td class="nowrap" title="${clock(i.trashed_at)}">${ago(i.trashed_at)}</td>
         <td class="nowrap">${inTime(i.expires_at)}</td>
-        <td style="text-align:right"><button class="btn sm danger" data-action="delete" data-path="${esc(i.path)}">Delete now</button></td></tr>`).join("");
+        <td class="nowrap" style="text-align:right">${i.video_id ? ytmButton(i.video_id, null, `Open ${i.title || "the song"} on YouTube Music`) : ""}
+          <button class="btn sm danger" data-action="delete" data-path="${esc(i.path)}">Delete now</button></td></tr>`).join("");
     } catch (e) { toast(e.message, "error"); }
   },
   async onClick(e) {
@@ -626,12 +695,16 @@ const Trash = {
 const Logs = {
   mount(el) {
     el.innerHTML = `
-      <div class="page-head"><div><h1>Logs</h1><p class="muted">Live output of the sync engine (also written to <code>config/logs/ytmd.log</code>).</p></div>
+      <div class="page-head"><div><h1>Logs</h1><p class="muted">Live output of the sync engine. History survives restarts and updates: it is kept in <code>config/logs</code>, one file per day.</p></div>
         <span class="spacer"></span>
         <div class="segmented" id="log-level"><button data-l="INFO" class="active">All</button><button data-l="WARNING">Warnings</button><button data-l="ERROR">Errors</button></div>
         <label class="inline small muted"><span class="switch"><input type="checkbox" id="log-follow" checked><span></span></span> Follow</label></div>
-      <div class="logbox" id="logbox"></div>`;
+      <div class="logbox" id="logbox"></div>
+      <details class="card log-files" id="log-files"><summary><b>Log files</b> <span class="muted small" id="log-files-sum"></span></summary>
+        <div id="log-files-list" class="small muted">Loading…</div></details>`;
     this.after = 0;
+    $("#log-files").addEventListener("toggle", (e) => { if (e.target.open) this.loadFiles(); });
+    this.loadFiles();
     this.level = "INFO";
     this.lines = [];
     $("#log-level").addEventListener("click", (e) => {
@@ -643,6 +716,16 @@ const Logs = {
     this.poll();
   },
   unmount() { clearTimeout(this.timer); },
+  async loadFiles() {
+    try {
+      const r = await api("/api/logs/files");
+      $("#log-files-sum").textContent = `· ${fmtNum(r.files.length)} file${r.files.length === 1 ? "" : "s"}, ${fmtBytes(r.total_bytes)} · ${r.retention_days ? `kept for ${r.retention_days} days` : "kept forever"} (Settings → Advanced)`;
+      $("#log-files-list").innerHTML = r.files.length ? `<table><tbody>${r.files.map((f) => `<tr>
+          <td class="mono">${esc(f.name)}</td><td class="nowrap" title="${clock(f.modified)}">${ago(f.modified)}</td><td class="nowrap">${fmtBytes(f.size)}</td>
+          <td style="text-align:right"><a class="btn sm ghost" href="/api/logs/files/${encodeURIComponent(f.name)}" download>Download</a></td></tr>`).join("")}</tbody></table>`
+        : "No log files yet.";
+    } catch (e) { toast(e.message, "error"); }
+  },
   async poll() {
     try {
       const items = await api(`/api/logs?after=${this.after}`);
@@ -660,7 +743,12 @@ const Logs = {
     if (!box) return;
     const rank = { DEBUG: 0, INFO: 1, WARNING: 2, ERROR: 3, CRITICAL: 4 };
     const min = rank[this.level];
-    const line = (l) => `<div class="l ${l.level}"><span class="ts">${new Date(l.ts * 1000).toLocaleTimeString()}</span> <span class="lg">${esc(l.logger.replace(/^ytmd\./, ""))}</span> ${esc(l.message)}</div>`;
+    const today = new Date().toDateString();
+    const stamp = (ts) => {
+      const d = new Date(ts * 1000);
+      return d.toDateString() === today ? d.toLocaleTimeString() : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    };
+    const line = (l) => `<div class="l ${l.level}"><span class="ts">${stamp(l.ts)}</span> <span class="lg">${esc(l.logger.replace(/^ytmd\./, "").replace(/^uvicorn\.error$/, "uvicorn"))}</span> ${esc(l.message)}</div>`;
     const pick = (arr) => arr.filter((l) => rank[l.level] >= min).map(line).join("");
     if (full) box.innerHTML = pick(this.lines) || `<div class="faint">No log lines yet.</div>`;
     else { if (box.querySelector(".faint")) box.innerHTML = ""; box.insertAdjacentHTML("beforeend", pick(fresh)); }
@@ -678,6 +766,10 @@ const Settings = {
     } catch (e) { toast(e.message, "error"); return; }
     this.original = JSON.stringify(this.data);
     this.render();
+    api("/api/logs/files").then((r) => {
+      const el = $("#log-usage");
+      if (el) el.textContent = `Now ${fmtBytes(r.total_bytes)} in ${fmtNum(r.files.length)} file${r.files.length === 1 ? "" : "s"}.`;
+    }).catch(() => {});
     el.addEventListener("input", () => this.markDirty());
     el.addEventListener("change", () => this.markDirty());
     el.addEventListener("click", (e) => this.onClick(e));
@@ -718,7 +810,7 @@ const Settings = {
       const avatar = acc.photo ? `<img src="${esc(imageSrc(acc.photo))}" alt="" onerror="this.remove()">` : esc(initials(acc.name || "YT"));
       return `<div class="card-head"><h2>YouTube Music account</h2></div>
         <div class="account"><div class="avatar">${avatar}</div>
-          <div style="flex:1"><div style="font-weight:700">${esc(acc.name || "Connected")}</div><div class="small muted">${esc(acc.handle || "")}${acc.handle ? " · " : ""}${a.mode === "oauth" ? "Google sign-in" : "browser session"}</div></div>
+          <div style="flex:1;min-width:160px"><div style="font-weight:700">${esc(acc.name || "Connected")}</div><div class="small muted">${esc(acc.handle || "")}${acc.handle ? " · " : ""}${a.mode === "oauth" ? "Google sign-in" : "browser session"}</div></div>
           ${a.error ? `<span class="badge danger">Sign-in expired</span>` : `<span class="badge success">Connected</span>`}
           <button class="btn sm ghost" data-action="show-connect">Replace</button>
           <button class="btn sm danger" data-action="disconnect">Disconnect</button></div>
@@ -859,6 +951,7 @@ const Settings = {
         ${this.text("ytdlp_extra_args", "Extra yt-dlp arguments", "Appended to every download, e.g. <code>--extractor-args youtube:player_client=tv</code>. Only network/format options are accepted.", { placeholder: "--limit-rate 5M" })}
         ${this.number("cover_size", "Cover size", "Embedded cover art resolution.", { min: 300, max: 3000, step: 100, suffix: "px" })}
         ${this.text("brand_account_id", "Brand account ID", "Only if your music lives on a brand account (myaccount.google.com/brandaccounts → the number in the URL).", { placeholder: "" })}
+        ${this.number("log_retention_days", "Keep log files for", `One file per day in <code>config/logs</code>; 0 keeps them forever. <span id="log-usage"></span>`, { min: 0, max: 3650, suffix: "days" })}
       </div>
 
       <div class="savebar hidden" id="savebar"><span class="muted">You have unsaved changes</span>
@@ -943,11 +1036,12 @@ const Settings = {
 };
 
 /* ===================================================================== router */
-const PAGES = { dashboard: Dashboard, playlists: Playlists, tracks: Tracks, duplicates: Duplicates, trash: Trash, logs: Logs, settings: Settings };
+const PAGES = { dashboard: Dashboard, playlists: Playlists, tracks: Tracks, cleanup: Cleanup, trash: Trash, logs: Logs, settings: Settings };
 
 function route() {
   const raw = location.hash.replace(/^#\/?/, "") || "dashboard";
   const [name, query] = raw.split("?");
+  if (name === "duplicates") { location.replace("#/cleanup?tab=duplicates"); return; }  // old link
   const id = PAGES[name] ? name : "dashboard";
   if (store.page?.unmount) store.page.unmount();
   store.route = id;

@@ -28,6 +28,11 @@ def same_song(title_a: str, artists_a: list[str] | None, title_b: str, artists_b
     return not a or not b or bool(a & b)
 
 
+def editable(playlist: dict) -> bool:
+    """Whether entries can be removed from here: own playlists, and Liked Music (by taking the like back)."""
+    return playlist["id"] == LIKED_MUSIC_ID or bool(playlist["owned"])
+
+
 def find_duplicates(db: Database) -> list[dict]:
     """Groups of entries that are the same song within one synced playlist."""
     groups = []
@@ -43,7 +48,7 @@ def find_duplicates(db: Database) -> list[dict]:
             groups.append({
                 "playlist_id": p["id"],
                 "playlist": p["title"],
-                "editable": bool(p["owned"]) and p["id"] != LIKED_MUSIC_ID,
+                "editable": editable(p),
                 "kind": "same" if len({e["video_id"] for e in entries}) == 1 else "similar",
                 "items": [{
                     "video_id": e["video_id"],

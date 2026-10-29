@@ -176,10 +176,17 @@ class YTMusicClient:
             ],
         }
 
-    def remove_from_playlist(self, playlist_id: str, video_id: str, set_video_id: str) -> None:
-        """Remove one entry of an owned playlist on YouTube Music."""
+    def remove_from_playlist(self, playlist_id: str, entries: list[tuple[str, str | None]]) -> None:
+        """Remove ``(video_id, set_video_id)`` entries of an owned playlist on YouTube Music.
+
+        Liked Music is not a real playlist: its songs are removed by taking the like back.
+        """
+        if playlist_id == LIKED_MUSIC_ID:
+            for video_id, _ in entries:
+                self._call(self.yt.rate_song, video_id, "INDIFFERENT")
+            return
         result = self._call(self.yt.remove_playlist_items, playlist_id,
-                            [{"videoId": video_id, "setVideoId": set_video_id}])
+                            [{"videoId": v, "setVideoId": s} for v, s in entries])
         if "SUCCEEDED" not in str(result):
             raise RuntimeError(f"YouTube Music did not confirm the removal: {result}")
 

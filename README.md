@@ -124,22 +124,32 @@ bar shows how much of it is already on disk; the filters find playlists that nee
 ### Tracks
 
 Search everything that is synced, filter by status or playlist, see why a download failed and retry it.
-Failed downloads are also retried automatically, with growing pauses.
+Failed downloads are also retried automatically, with growing pauses. Every playlist name is a link that
+opens the song inside that playlist on YouTube Music.
 
 <p align="center"><img src="docs/screenshots/tracks.png" alt="Tracks page" width="100%"></p>
 
-### Duplicates
+### Cleanup
 
-Finds songs that are in the same playlist twice — the same video added again, or the music video next to
-the album version. It suggests which one to keep, but you can remove any entry: right here (for playlists
-you own) or in the YouTube Music app. Nothing is ever removed automatically.
+Two lists of playlist entries worth removing on YouTube Music:
 
-<p align="center"><img src="docs/screenshots/duplicates.png" alt="Duplicates page" width="100%"></p>
+- **Unavailable** — songs YouTube no longer serves: deleted, made private, blocked in your country or
+  greyed out. They can't be downloaded, so they only clutter the playlist.
+- **Duplicates** — songs that are in the same playlist twice: the same video added again, or the music
+  video next to the album version. The app suggests which one to keep, but you can remove any entry.
+
+Remove them one by one or all at once with a click (your own playlists and Liked Music), or open the
+entry on YouTube Music and remove it there. Nothing is ever removed automatically, and the local files
+follow at the next sync.
+
+<p align="center"><img src="docs/screenshots/cleanup.png" alt="Cleanup page: unavailable songs" width="100%"></p>
+<p align="center"><img src="docs/screenshots/duplicates.png" alt="Cleanup page: duplicates" width="100%"></p>
 
 ### Trash
 
 Tracks you remove on YouTube Music land in a hidden trash folder first and are deleted after 30 days.
 Changed your mind? Add the song back on YouTube Music and the next sync restores it — no download needed.
+Each entry links to the song on YouTube Music.
 
 <p align="center"><img src="docs/screenshots/trash.png" alt="Trash page" width="100%"></p>
 
@@ -313,6 +323,7 @@ Almost everything is configured in the web UI and stored in `config/settings.jso
 | Parallel downloads / pause | 2 / 3 s | Be gentle — YouTube rate-limits aggressive downloaders. |
 | Download as signed-in user | off | Needed for age-restricted tracks and Premium 256 kbps streams. |
 | Jellyfin URL + API key | – | Optional: trigger a library scan after each sync. |
+| Keep log files for | forever (`0`) | Logs are kept in `config/logs`, one file per day; the setting shows how much space they use. |
 
 Environment variables (container level):
 
@@ -372,10 +383,11 @@ starts rate-limiting.
 | Age-restricted / Premium-only tracks fail | Enable *Download as signed-in user* or upload a `cookies.txt` (Settings → Downloads). |
 | “Sign-in expired” on the dashboard | Paste fresh request headers in Settings (you probably signed out of that browser session). |
 | Banner “music folder is not writable” | Set `PUID`/`PGID` to the owner of the folder. |
-| Track shows *Unavailable* | It is greyed out on YouTube Music (removed or region-locked); it is skipped. |
+| Track shows *Unavailable* | It is greyed out on YouTube Music (removed or region-locked); it is skipped. Remove it from the playlist on the **Cleanup** page. |
 | Many downloads suddenly fail | Usually an outdated yt-dlp; it updates daily, or press *Update now* in Settings → Advanced. |
 
-Logs: the **Logs** page, `docker compose logs -f`, or `config/logs/ytmd.log`.
+Logs: the **Logs** page (history survives restarts and updates, older days can be downloaded there),
+`docker compose logs -f`, or the daily files in `config/logs/`.
 
 ## Updating
 
@@ -412,9 +424,11 @@ python -m pytest
 | `ytmd/downloader.py` | yt-dlp subprocess wrapper, progress and error classification |
 | `ytmd/tagger.py` | Tags, cover art and lyrics for Opus / M4A / MP3 |
 | `ytmd/library.py` | File naming, folder layout, trash, playlist files |
-| `ytmd/duplicates.py`, `ytmd/covers.py` | Duplicate finder, generated playlist covers |
+| `ytmd/duplicates.py`, `ytmd/unavailable.py` | Cleanup: duplicates and songs that can't be downloaded |
+| `ytmd/covers.py` | Generated playlist covers |
 | `ytmd/db.py` | SQLite state |
 | `ytmd/scheduler.py`, `ytmd/updater.py` | Periodic runs, yt-dlp self-update |
+| `ytmd/logs.py` | Console, daily log files and the in-app log view |
 | `ytmd/web/` | FastAPI backend and the single-page web UI (no build step) |
 | `tests/` | Pytest suite: fake YouTube Music, scripted and real yt-dlp runs (no network needed) |
 
