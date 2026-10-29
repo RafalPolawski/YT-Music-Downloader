@@ -21,12 +21,13 @@ from ytmd import __version__
 from ytmd import db as dbm
 from ytmd import jellyfin
 from ytmd.config import Settings
-from ytmd.duplicates import find_duplicates
+from ytmd.duplicates import editable, find_duplicates
 from ytmd.library import disk_usage
-from ytmd.logs import memory_handler
+from ytmd.logs import log_files, memory_handler
+from ytmd.unavailable import find_unavailable
 from ytmd.updater import update_ytdlp
-from ytmd.ytmusic import (AuthError, DeviceLogin, auth_mode, disconnect, save_browser_auth, save_oauth,
-                          write_private)
+from ytmd.ytmusic import (LIKED_MUSIC_ID, AuthError, DeviceLogin, auth_mode, disconnect, save_browser_auth,
+                          save_oauth, write_private)
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +121,19 @@ def create_app(ctx) -> FastAPI:
     @app.get("/api/logs")
     def logs(after: int = 0):
         return memory_handler.tail(after)
+
+    @app.get("/api/logs/files")
+    def log_file_list():
+        files = [{k: f[k] for k in ("name", "size", "modified")} for f in log_files(env.log_dir)]
+        return {"files": files, "total_bytes": sum(f["size"] for f in files),
+                "retention_days": ctx.settings.get().log_retention_days}
+
+    @app.get("/api/logs/files/{name}")
+    def log_file(name: str):
+        f = next((f for f in log_files(env.log_dir) if f["name"] == name), None)
+        if f is None:
+            raise HTTPException(status_code=404, detail="Unknown log file")
+        return FileResponse(f["path"], media_type="text/plain; charset=utf-8", filename=name)
 
     # ------------------------------------------------------------------ sync control
     @app.post("/api/sync")
@@ -236,41 +250,64 @@ def create_app(ctx) -> FastAPI:
             tmp.replace(path)
         return FileResponse(path, media_type="image/jpeg", headers={"Cache-Control": "max-age=604800"})
 
-    # ------------------------------------------------------------------ duplicates
+    # ------------------------------------------------------------------ cleanup
     @app.get("/api/duplicates")
     def duplicates():
         return find_duplicates(db)
 
-    @app.post("/api/duplicates/remove")
-    def remove_duplicate(payload: dict = Body(...)):
+    @app.get("/api/unavailable")
+    def unavailable():
+        return find_unavailable(db)
+
+    @app.post("/api/playlist-entries/remove")
+    def remove_playlist_entries(payload: dict = Body(...)):
+        """Remove entries (duplicates, unavailable songs) from a playlist on YouTube Music."""
         playlist_id = str(payload.get("playlist_id", ""))
-        video_id = str(payload.get("video_id", ""))
-        set_video_id = str(payload.get("set_video_id", ""))
+        wanted = payload.get("entries")
+        if not isinstance(wanted, list) or not wanted or not all(isinstance(w, dict) for w in wanted):
+            raise bad_request("Nothing to remove")
         p = db.playlist(playlist_id)
         if p is None:
             raise HTTPException(status_code=404, detail="Unknown playlist")
-        if not p["owned"]:
-            raise bad_request("Only playlists you own can be edited - remove it in the YouTube Music app")
-        entry = next((e for e in db.playlist_entries(playlist_id)
-                      if e["video_id"] == video_id and e["set_video_id"] == set_video_id), None)
-        if entry is None or not set_video_id:
-            raise bad_request("That entry is not in the playlist (any more) - run a sync and try again")
+        if not editable(p):
+            raise bad_request("Only your own playlists can be edited from here - remove it in the YouTube Music app")
+        liked = playlist_id == LIKED_MUSIC_ID
+        current = db.playlist_entries(playlist_id)
+        entries = []
+        for w in wanted:
+            video_id = str(w.get("video_id", ""))
+            set_video_id = w.get("set_video_id") or None
+            entry = next((e for e in current if e["video_id"] == video_id
+                          and (liked or (set_video_id and e["set_video_id"] == set_video_id))), None)
+            if entry is None:
+                raise bad_request("That entry is not in the playlist (any more) - run a sync and try again")
+            if entry not in entries:
+                entries.append(entry)
         try:
-            ctx.client().remove_from_playlist(playlist_id, video_id, set_video_id)
+            ctx.client().remove_from_playlist(playlist_id, [(e["video_id"], e["set_video_id"]) for e in entries])
         except Exception as exc:
             raise bad_request(f"YouTube Music refused the change: {exc}")
-        db.remove_playlist_entry(playlist_id, set_video_id)
-        db.add_event("info", f"Removed duplicate '{entry['title']}' from '{p['title']}' on YouTube Music")
-        scheduler.trigger("duplicate removed")
-        return {"ok": True}
+        for e in entries:
+            if liked:
+                db.remove_playlist_video(playlist_id, e["video_id"])
+            else:
+                db.remove_playlist_entry(playlist_id, e["set_video_id"])
+        what = f"'{entries[0]['title']}'" if len(entries) == 1 else f"{len(entries)} songs"
+        db.add_event("info", f"Removed {what} from '{p['title']}' on YouTube Music")
+        scheduler.trigger("playlist edited")
+        return {"ok": True, "removed": len(entries)}
 
     # ------------------------------------------------------------------ trash
     @app.get("/api/trash")
     def trash():
         items = engine.trash.items()
         retention = ctx.settings.get().trash_retention_days
+        trashed = {t["trash_path"]: t for t in db.tracks_by_status(dbm.TRASHED) if t["trash_path"]}
         for i in items:
             i["expires_at"] = i["trashed_at"] + retention * 86400
+            t = trashed.get(i["path"])
+            i.update(video_id=t["video_id"] if t else None, title=t["title"] if t else None,
+                     artists=t["artists"] if t else [])
         return {"items": items, "retention_days": retention}
 
     @app.delete("/api/trash")

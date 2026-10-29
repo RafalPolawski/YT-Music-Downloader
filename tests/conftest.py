@@ -78,10 +78,13 @@ class FakeClient:
         return [{**t, "set_video_id": t.get("set_video_id") or f"{pid}:{i}"}
                 for i, t in enumerate(self.tracks.get(pid, []))]
 
-    def remove_from_playlist(self, pid, vid, set_vid):
-        self.removed.append((pid, vid, set_vid))
+    def remove_from_playlist(self, pid, entries):
+        for vid, set_vid in entries:
+            self.removed.append((pid, vid, set_vid))
+        gone = {s for _, s in entries}
         self.tracks[pid] = [t for i, t in enumerate(self.tracks[pid])
-                            if (t.get("set_video_id") or f"{pid}:{i}") != set_vid]
+                            if (t.get("set_video_id") or f"{pid}:{i}") not in gone
+                            and not (pid == "LM" and t["video_id"] in {v for v, _ in entries})]
 
     def album(self, album_id):
         return self.albums[album_id]

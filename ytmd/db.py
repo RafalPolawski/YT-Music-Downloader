@@ -282,6 +282,10 @@ class Database:
         return self._exec("DELETE FROM playlist_tracks WHERE playlist_id = ? AND set_video_id = ?",
                           (playlist_id, set_video_id))
 
+    def remove_playlist_video(self, playlist_id: str, video_id: str) -> int:
+        return self._exec("DELETE FROM playlist_tracks WHERE playlist_id = ? AND video_id = ?",
+                          (playlist_id, video_id))
+
     def clear_inactive_memberships(self) -> int:
         return self._exec(
             f"""DELETE FROM playlist_tracks WHERE playlist_id IN
@@ -433,13 +437,20 @@ class Database:
         rows = self._all(
             f"""SELECT t.*,
                        (SELECT GROUP_CONCAT(p.title, ' • ') FROM playlist_tracks pt
-                          JOIN playlists p ON p.id = pt.playlist_id WHERE pt.video_id = t.video_id) AS playlists
+                          JOIN playlists p ON p.id = pt.playlist_id WHERE pt.video_id = t.video_id) AS playlists,
+                       (SELECT GROUP_CONCAT(p.id || char(31) || p.title, char(30)) FROM
+                          (SELECT DISTINCT playlist_id FROM playlist_tracks WHERE video_id = t.video_id) pt
+                          JOIN playlists p ON p.id = pt.playlist_id) AS playlist_refs
                 FROM tracks t WHERE {cond}
                 ORDER BY CASE t.status WHEN 'failed' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,
                          t.added_at DESC, t.title COLLATE NOCASE
                 LIMIT ? OFFSET ?""",
             [*params, limit, offset],
         )
+        for r in rows:  # [{id, title}] of the playlists the track is in, for links into each playlist
+            refs = r.pop("playlist_refs")
+            r["playlist_list"] = [dict(zip(("id", "title"), ref.split("\x1f", 1)))
+                                  for ref in refs.split("\x1e")] if refs else []
         return total, rows
 
     def stats(self) -> dict:

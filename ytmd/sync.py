@@ -36,6 +36,7 @@ from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_f
                           remove_with_sidecars, render_m3u8, sanitize, track_relpath, with_suffix_tag,
                           alternative_relpath, link_or_copy,
                           write_if_changed)
+from ytmd.logs import purge_logs
 from ytmd.tagger import TrackTags, audio_info, fetch_image, square_jpeg, to_lrc, write_tags
 from ytmd.ytmusic import (LIKED_MUSIC_ID, VIDEO_TYPE_SONG, AuthError, YTMusicClient, auth_mode, make_client,
                           netscape_cookies_from_auth)
@@ -861,6 +862,7 @@ class SyncEngine:
     def _finish(self, settings: Settings, summary: Summary) -> None:
         self.state.update(phase="finishing", message="Cleaning up")
         summary.trash_purged = self.trash.purge(settings.trash_retention_days)
+        purge_logs(self.env.log_dir, settings.log_retention_days)
         for t in self.db.tracks_by_status(dbm.TRASHED):
             if not t["trash_path"] or not (self.trash.root / t["trash_path"]).exists():
                 self.db.delete_track(t["video_id"])

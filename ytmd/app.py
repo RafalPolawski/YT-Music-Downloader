@@ -12,7 +12,7 @@ from ytmd import __version__
 from ytmd.config import Environment, SettingsStore
 from ytmd.db import Database
 from ytmd.downloader import ytdlp_version
-from ytmd.logs import setup_logging
+from ytmd.logs import purge_logs, setup_logging
 from ytmd.scheduler import Scheduler
 from ytmd.sync import SyncEngine
 from ytmd.updater import Updater
@@ -56,6 +56,7 @@ class AppContext:
             log.error("The music folder %s is not writable by uid %s - set PUID/PGID to the owner of that folder",
                       self.env.music_dir, os.getuid())
         self.db.set_kv("ytdlp_version", ytdlp_version())
+        purge_logs(self.env.log_dir, self.settings.get().log_retention_days)
         if auth_mode(self.env):
             threading.Thread(target=self._verify_quietly, daemon=True).start()
         self.scheduler.start()
