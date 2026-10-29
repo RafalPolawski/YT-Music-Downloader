@@ -198,3 +198,24 @@ def test_connect_rejects_bad_headers(api):
     r = c.post("/api/auth", json={"headers": "accept: */*"})
     assert r.status_code == 400
     assert not ctx.env.auth_file.exists()
+
+
+def test_thumbnails_are_proxied_and_cached(api, monkeypatch, jpeg_bytes):
+    from ytmd.web import api as api_module
+    calls = []
+
+    class Resp:
+        content = jpeg_bytes
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr(api_module.requests, "get", lambda url, **kw: calls.append(url) or Resp())
+    _, c = api()
+    url = "https://lh3.googleusercontent.com/abc=w120-h120"
+    for _ in range(2):
+        r = c.get("/api/thumb", params={"url": url})
+        assert r.status_code == 200 and r.content == jpeg_bytes
+    assert calls == [url]  # second request served from the cache
+    assert c.get("/api/thumb", params={"url": "http://169.254.169.254/latest"}).status_code == 400
+    assert c.get("/api/thumb", params={"url": "https://evil.example/googleusercontent.com.png"}).status_code == 400

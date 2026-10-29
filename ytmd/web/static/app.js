@@ -64,7 +64,6 @@ function ago(ts) { if (!ts) return "never"; const s = Date.now() / 1000 - ts; re
 function inTime(ts) { if (!ts) return "—"; const s = ts - Date.now() / 1000; return s <= 1 ? "now" : `in ${fmtSpan(s)}`; }
 function clock(ts) { return ts ? new Date(ts * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "—"; }
 function hm(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
-function hue(str) { let h = 0; for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) % 360; return h; }
 function initials(str) { return String(str || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join(""); }
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 
@@ -105,17 +104,15 @@ async function act(fn, okMessage) {
   }
 }
 
-function coverHtml(url, title, cls = "") {
-  const h = hue(title);
-  const fallback = `<div class="fallback" style="background:linear-gradient(135deg,hsl(${h} 70% 45%),hsl(${(h + 60) % 360} 70% 35%))">${esc(initials(title))}</div>`;
-  if (!url) return fallback;
-  return `${fallback}<img class="${cls}" src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`;
+// YouTube images go through the server (cached there), so tracker blockers in the browser don't hide them.
+function imageSrc(url) {
+  return /^https:\/\/([\w-]+\.)*(googleusercontent\.com|ggpht\.com|ytimg\.com)\//.test(url || "")
+    ? `/api/thumb?url=${encodeURIComponent(url)}` : url;
 }
 
-function thumbHtml(url, label) {
-  const h = hue(label);
-  const img = url ? `<img src="${esc(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "";
-  return `<div class="thumb" style="background:linear-gradient(135deg,hsl(${h} 65% 42%),hsl(${(h + 60) % 360} 65% 32%))">${esc(initials(label))}${img}</div>`;
+function thumbHtml(url, cls = "") {
+  const img = url ? `<img src="${esc(imageSrc(url))}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<div class="thumb ${cls}">${icon("tracks")}${img}</div>`;
 }
 
 /* ===================================================================== global state */
@@ -321,8 +318,8 @@ const Playlists = {
     el.innerHTML = `
       <div class="page-head"><div><h1>Playlists</h1><p class="muted">Pick which playlists are mirrored. Order and contents always follow YouTube Music.</p></div>
         <span class="spacer"></span>
-        <button class="btn" data-action="refresh">${icon("refresh")} Refresh list</button>
-        <button class="btn primary" data-action="sync">${icon("sync")} Sync now</button></div>
+        <div class="inline"><button class="btn" data-action="refresh">${icon("refresh")} Refresh list</button>
+        <button class="btn primary" data-action="sync">${icon("sync")} Sync now</button></div></div>
       <div class="toolbar">
         <input type="search" id="pl-q" placeholder="Filter playlists…">
         <div class="segmented" id="pl-filter">
@@ -332,7 +329,8 @@ const Playlists = {
         <button class="btn sm ghost" data-action="all-on">Enable all</button>
         <button class="btn sm ghost" data-action="all-off">Disable all</button>
       </div>
-      <div id="pl-grid" class="pl-grid"></div>`;
+      <div id="pl-summary" class="small muted" style="margin:-4px 0 10px"></div>
+      <div id="pl-grid" class="pl-list"></div>`;
     this.filter = "all";
     this.items = [];
     this.loadedAt = 0;
@@ -412,25 +410,29 @@ const Playlists = {
     });
     const grid = $("#pl-grid");
     if (!this.items.length) {
-      grid.innerHTML = `<div class="empty" style="grid-column:1/-1">${icon("playlists")}<p>No playlists yet.</p>
+      grid.innerHTML = `<div class="empty">${icon("playlists")}<p>No playlists yet.</p>
         <p class="small">${store.status?.auth?.connected ? "Click <b>Refresh list</b> to read them from YouTube Music." : 'Connect your account in <a href="#/settings">Settings</a> first.'}</p></div>`;
       return;
     }
-    if (!list.length) { grid.innerHTML = `<div class="empty" style="grid-column:1/-1"><p>No playlists match.</p></div>`; return; }
+    const synced = this.items.filter((p) => p.enabled && p.in_library);
+    $("#pl-summary").textContent = `${synced.length} of ${this.items.length} playlists synced · `
+      + `${fmtNum(synced.reduce((n, p) => n + (p.downloaded_count || 0), 0))} tracks on disk`;
+    if (!list.length) { grid.innerHTML = `<div class="empty"><p>No playlists match.</p></div>`; return; }
     grid.innerHTML = list.map((p) => {
       const total = p.local_count || p.remote_count || 0;
       const pct = total ? Math.min(100, (100 * p.downloaded_count) / total) : 0;
-      const tag = p.id === "LM" ? `<span class="badge violet tag">Liked Music</span>` : (!p.owned ? `<span class="badge tag">Saved</span>` : "");
-      return `<div class="pl-card ${p.enabled ? "" : "disabled"}">
-        <div class="pl-cover">${coverHtml(p.thumbnail, p.title)}${tag}</div>
-        <div class="pl-body">
-          <div class="pl-title"><h3 title="${esc(p.title)}">${esc(p.title)}</h3>
-            <label class="switch" title="Sync this playlist"><input type="checkbox" data-toggle="${esc(p.id)}" ${p.enabled ? "checked" : ""}><span></span></label></div>
-          <div class="pl-meta"><span>${p.enabled && p.fetched ? `${fmtNum(p.downloaded_count)} / ${fmtNum(total)} on disk` : `${fmtNum(p.remote_count ?? total)} tracks`}</span>
-            <span>${esc(p.author || (p.owned ? "Your playlist" : ""))}</span></div>
-          ${p.enabled && p.fetched ? `<div class="progress thin"><span style="width:${pct}%"></span></div>` : ""}
-          <div class="pl-foot">${this.statusBadge(p)}</div>
-        </div></div>`;
+      const kind = p.id === "LM" ? "Liked Music" : (p.owned ? "" : "Saved");
+      const owner = p.author || "";
+      const meta = [kind, owner, p.enabled && p.fetched ? `${fmtNum(p.downloaded_count)} / ${fmtNum(total)} on disk`
+        : `${fmtNum(p.remote_count ?? total)} tracks`].filter(Boolean).map(esc).join(" · ");
+      return `<div class="pl-row ${p.enabled ? "" : "off"}">
+        ${thumbHtml(p.thumbnail, "pl-thumb")}
+        <div class="pl-info"><div class="pl-name" title="${esc(p.title)}">${esc(p.title)}</div>
+          <div class="pl-meta">${meta}</div>
+          ${p.enabled && p.fetched ? `<div class="progress thin"><span style="width:${pct}%"></span></div>` : ""}</div>
+        <div class="pl-status">${this.statusBadge(p)}</div>
+        <label class="switch" title="Sync this playlist"><input type="checkbox" data-toggle="${esc(p.id)}" ${p.enabled ? "checked" : ""}><span></span></label>
+      </div>`;
     }).join("");
   },
 };
@@ -507,7 +509,7 @@ const Tracks = {
       const err = t.last_error && t.status !== "downloaded" ? `<div class="err-line">${esc(t.last_error)}</div>` : "";
       const where = t.path || t.trash_path;
       return `<tr>
-        <td><div class="cell-track">${thumbHtml(t.thumbnail, t.album || t.title)}<div><div class="t" title="${esc(where || "")}">${esc(t.title)}</div>
+        <td><div class="cell-track">${thumbHtml(t.thumbnail)}<div><div class="t" title="${esc(where || "")}">${esc(t.title)}</div>
           <div class="a">${esc((t.artists || []).join(", "))}</div>${err}</div></div></td>
         <td class="small">${esc(t.album || "")}${t.year ? ` <span class="faint">· ${esc(t.year)}</span>` : ""}</td>
         <td class="small muted" style="max-width:260px">${esc(t.playlists || "")}</td>
@@ -545,15 +547,16 @@ const Duplicates = {
     box.innerHTML = this.groups.map((g, gi) => `
       <div class="card"><div class="card-head"><h2>${esc(g.playlist)}</h2>
         <span class="badge ${g.kind === "same" ? "warning" : "info"}">${g.kind === "same" ? "Same song added twice" : "Same song, different versions"}</span></div>
+        <p class="small muted" style="margin:-6px 0 12px">The suggestion keeps ${g.kind === "same" ? "the first entry" : "the album version"}, but you can remove whichever you like.</p>
         <div class="table-wrap" style="box-shadow:none"><table><tbody>${g.items.map((it, ii) => `
-          <tr><td><div class="cell-track">${thumbHtml(it.thumbnail, it.album || it.title)}<div>
+          <tr><td><div class="cell-track">${thumbHtml(it.thumbnail)}<div>
               <div class="t">${esc(it.title)}</div><div class="a">${esc((it.artists || []).join(", "))}${it.album ? ` · ${esc(it.album)}` : ""}</div></div></div></td>
             <td class="small muted nowrap">#${it.position}</td>
             <td class="small nowrap">${it.album_version ? "Album version" : "Music video / upload"}</td>
-            <td style="text-align:right">${it.keep ? `<span class="badge success">Suggested to keep</span>`
-              : !g.editable ? `<span class="small muted">Remove it in the YouTube Music app</span>`
+            <td class="nowrap">${it.keep ? `<span class="badge success">Suggested to keep</span>` : `<span class="badge warning">Suggested to remove</span>`}</td>
+            <td style="text-align:right">${!g.editable ? `<span class="small muted">Remove it in the YouTube Music app</span>`
               : !it.set_video_id ? `<span class="small muted">Run a sync first</span>`
-              : `<button class="btn sm danger" data-action="remove" data-g="${gi}" data-i="${ii}">${icon("trash")} Remove on YouTube Music</button>`}</td></tr>`).join("")}
+              : `<button class="btn sm ${it.keep ? "ghost" : "danger"}" data-action="remove" data-g="${gi}" data-i="${ii}">${icon("trash")} Remove on YouTube Music</button>`}</td></tr>`).join("")}
         </tbody></table></div></div>`).join("");
   },
   async onClick(e) {
@@ -712,7 +715,7 @@ const Settings = {
     const a = s.auth;
     if (a.connected) {
       const acc = a.account || {};
-      const avatar = acc.photo ? `<img src="${esc(acc.photo)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : esc(initials(acc.name || "YT"));
+      const avatar = acc.photo ? `<img src="${esc(imageSrc(acc.photo))}" alt="" onerror="this.remove()">` : esc(initials(acc.name || "YT"));
       return `<div class="card-head"><h2>YouTube Music account</h2></div>
         <div class="account"><div class="avatar">${avatar}</div>
           <div style="flex:1"><div style="font-weight:700">${esc(acc.name || "Connected")}</div><div class="small muted">${esc(acc.handle || "")}${acc.handle ? " · " : ""}${a.mode === "oauth" ? "Google sign-in" : "browser session"}</div></div>
@@ -813,7 +816,7 @@ const Settings = {
         ])}
         ${this.toggle("prefer_album_version", "Prefer album versions", "When a playlist contains a music video, download the matching album track instead: clean audio without intros/skits and proper album tags.")}
         ${this.toggle("write_lyrics", "Lyrics", "Embed lyrics and save synced <code>.lrc</code> files next to the tracks when YouTube Music has them.")}
-        ${this.toggle("write_album_covers", "Album folder covers", "Write <code>cover.jpg</code> into each album folder (cover art is always embedded in the files).")}
+        ${this.toggle("write_album_covers", "Folder covers", "Write a <code>cover.jpg</code> into every folder: the album art in the Artist/Album layout, a generated cover with the playlist name in the Playlist layout. Each song's own cover art is always embedded in the file.")}
         ${this.toggle("sponsorblock_remove_offtopic", "Cut non-music parts", "Uses SponsorBlock to remove talking/skits from music videos (only affects videos that have segments).")}
       </div>
 

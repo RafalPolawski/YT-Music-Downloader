@@ -28,6 +28,8 @@ from typing import Callable
 from ytmd import db as dbm
 from ytmd import jellyfin
 from ytmd.config import Environment, Settings, SettingsStore
+from ytmd.covers import playlist_cover
+from ytmd.duplicates import same_song
 from ytmd.downloader import (CANCELLED, NEEDS_LOGIN, RATE_LIMITED, UNAVAILABLE, DownloadError,
                              DownloadOptions, Progress, clean_work_dir, download_audio)
 from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_file, prune_parents,
@@ -482,7 +484,8 @@ class SyncEngine:
         for t, desired in relocations:
             src = music / t["path"]
             folder_cover = src.parent / COVER_FILE
-            if folder_cover.exists() and src.parent not in covers:
+            from_playlist_folder = src.parent.parent == music and src.parent.name in set(self._folders.values())
+            if folder_cover.exists() and src.parent not in covers and not from_playlist_folder:
                 kept = staging / "covers" / f"{len(covers)}.jpg"
                 kept.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(folder_cover, kept)
@@ -501,8 +504,13 @@ class SyncEngine:
             target = music / desired
             move_file(tmp, target)
             self.db.update_track(t["video_id"], path=desired)
-            if cover and settings.layout == "artist_album" and t.get("album") and not (target.parent / COVER_FILE).exists():
-                shutil.copyfile(cover, target.parent / COVER_FILE)
+            folder_cover = target.parent / COVER_FILE
+            if settings.layout == "artist_album" and settings.write_album_covers and t.get("album") \
+                    and not folder_cover.exists():
+                if cover:
+                    shutil.copyfile(cover, folder_cover)
+                elif (art := self._cover(t, settings)):
+                    folder_cover.write_bytes(art)
         shutil.rmtree(staging / "covers", ignore_errors=True)
         log.info("Reorganized %d file(s) to match the library layout", len(staged))
         return len(staged)
@@ -551,6 +559,12 @@ class SyncEngine:
 
         summary.playlist_files_changed += self._sync_copies(settings)
         names = self._playlist_names()
+        if settings.layout == "playlist" and settings.write_album_covers:
+            titles = {p["id"]: p["title"] for p in self.db.active_playlists()}
+            for pid, name in names.items():
+                folder = self.music_dir / name
+                if folder.is_dir() and not (folder / COVER_FILE).exists():
+                    (folder / COVER_FILE).write_bytes(playlist_cover(titles[pid]))
         active_ids = set()
         for p in self.db.active_playlists():
             active_ids.add(p["id"])
@@ -747,7 +761,8 @@ class SyncEngine:
                 info = client.watch_info(vid)
                 upd["lyrics_id"] = info.get("lyrics_id")
                 cp = info.get("counterpart")
-                if wants_counterpart and cp and cp.get("video_type") == VIDEO_TYPE_SONG and cp.get("album_id"):
+                if (wants_counterpart and cp and cp.get("video_type") == VIDEO_TYPE_SONG and cp.get("album_id")
+                        and same_song(t["title"], t["artists"], cp["title"], cp["artists"])):
                     upd.update(source_video_id=cp["video_id"], title=cp["title"], album=cp["album"],
                                album_id=cp["album_id"], artists=cp["artists"] or t["artists"])
                     log.info("Using album version of '%s' (%s)", t["title"], cp["album"])

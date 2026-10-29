@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Generated `cover.jpg` with the playlist name in every playlist folder (playlist layout), so Jellyfin shows
+  a meaningful picture for the folder instead of a random song's cover.
+- Thumbnails are loaded through the app and cached, so browsers with tracker blocking (e.g. Brave
+  Shields) show playlist and track images.
+
+### Changed
+
+- Playlists page is a compact list instead of large cards.
+- Duplicates: every entry can be removed; the suggestion (keep the first entry or the album version) is
+  shown as a label instead of being the only option.
+- A music video is only swapped for its album version when YouTube Music's counterpart is really the
+  same song (title and artist match), which avoids remixes and compilation covers.
+- Switching to the Artist/Album layout now writes the album `cover.jpg` for files that were moved there.
+
 ## [1.1.0] - 2026-10-23
 
 ### Added

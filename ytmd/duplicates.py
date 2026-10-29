@@ -18,6 +18,16 @@ def song_key(title: str | None, artists: list[str] | None) -> str:
     return f"{artist}|{name}"
 
 
+def same_song(title_a: str, artists_a: list[str] | None, title_b: str, artists_b: list[str] | None) -> bool:
+    """Loose check that two YouTube Music entries are the same song (video vs album version)."""
+    name_a, name_b = (song_key(t, None).split("|", 1)[1] for t in (title_a, title_b))
+    if not name_a or name_a != name_b:
+        return False
+    a = {x.casefold() for x in artists_a or []}
+    b = {x.casefold() for x in artists_b or []}
+    return not a or not b or bool(a & b)
+
+
 def find_duplicates(db: Database) -> list[dict]:
     """Groups of entries that are the same song within one synced playlist."""
     groups = []

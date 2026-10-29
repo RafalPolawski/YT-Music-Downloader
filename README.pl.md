@@ -208,6 +208,12 @@ jest zwykła kopia.
 4. W **Symfonium** dodaj serwer Jellyfin jako źródło (media provider). Playlisty i nowe utwory pojawią się
    po kolejnej synchronizacji źródła.
 
+**Okładki w układzie playlist:** Jellyfin traktuje każdy folder jako jeden album, więc utwory z folderu
+playlisty dostają wspólny obrazek albumu — stąd wrażenie „złych” okładek przy niektórych utworach. Żeby to
+było celowe, aplikacja wrzuca do każdego folderu playlisty wygenerowany `cover.jpg` z nazwą playlisty
+(Settings → *Folder covers*). Prawdziwa okładka każdego utworu zostaje osadzona w pliku; jeśli chcesz, żeby
+Jellyfin i Symfonium wszędzie pokazywały okładki albumów, użyj układu `Artist/Album/Track`.
+
 **Navidrome** działa tak samo — automatycznie importuje playlisty `.m3u8` z folderu z muzyką.
 
 ## Mac mini (Apple Silicon) 24/7
