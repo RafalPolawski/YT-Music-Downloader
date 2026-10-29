@@ -397,7 +397,7 @@ docker compose pull && docker compose up -d
 ```
 
 Ustawienia, połączenie z kontem i stan synchronizacji są w `config/`, więc aktualizacja jest
-bezpieczna. Tagi obrazu: `latest` to najnowsze wydanie, `1` zostaje na wydaniach 1.x, `1.2.0`
+bezpieczna. Tagi obrazu: `latest` to najnowsze wydanie, `1` zostaje na wydaniach 1.x, `1.3.0`
 przypina konkretną wersję, a `edge` śledzi gałąź `main`. Zmiany w kolejnych wersjach opisuje
 [changelog](CHANGELOG.md) i [strona wydań](https://github.com/RafalPolawski/YT-Music-Downloader/releases).
 

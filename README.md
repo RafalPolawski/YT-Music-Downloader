@@ -396,7 +396,7 @@ docker compose pull && docker compose up -d
 ```
 
 Settings, the account connection and the sync state live in `config/`, so updates are safe.
-Image tags: `latest` is the newest release, `1` stays on 1.x releases, `1.2.0` pins an exact
+Image tags: `latest` is the newest release, `1` stays on 1.x releases, `1.3.0` pins an exact
 version and `edge` follows the `main` branch. What changed in each version is listed in the
 [changelog](CHANGELOG.md) and on the [releases page](https://github.com/RafalPolawski/YT-Music-Downloader/releases).
 
