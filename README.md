@@ -12,7 +12,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-yellow" alt="MIT"></a>
 </p>
 
-<p align="center"><a href="README.pl.md">🇵🇱 Polska wersja</a></p>
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#a-quick-tour">Tour</a> ·
+  <a href="#jellyfin--symfonium">Jellyfin &amp; Symfonium</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#faq">FAQ</a> ·
+  <a href="README.pl.md">🇵🇱 Polska wersja</a>
+</p>
 
 ---
 
@@ -25,35 +32,167 @@ YouTube Music.
 YouTube Music is the **source of truth**. You curate playlists where you always do; this app makes sure the
 files on your disk follow.
 
-![Dashboard](docs/screenshots/dashboard.png)
+<p align="center"><img src="docs/screenshots/dashboard.png" alt="Dashboard with a sync in progress" width="100%"></p>
 
-## Features
+## Highlights
 
-- 🔄 **Continuous mirroring** – checks YouTube Music on a schedule (every hour by default) and applies
-  additions, removals and re-ordering.
-- 📃 **Playlists as `.m3u8`** in the exact YouTube Music order, with relative paths, so they work in
-  Jellyfin, Navidrome, Symfonium (through your server), foobar2000, VLC…
-- 🗂️ **Your playlists as folders** – by default every playlist is a folder (`Road Trip/Digital Love.opus`),
-  exactly like on YouTube Music. A song in several playlists is downloaded once and hard-linked into each
-  folder. Prefer a classic library? Switch to `Artist/Album/01 Title.opus` with one click.
-- 🏷️ **Proper tags** – artist, album artist, album, year, track number, embedded cover art and lyrics
-  (synced `.lrc` when available).
-- 🔍 **Duplicate finder** – lists songs that are in the same playlist twice (or as video and album
-  version); remove them in the YouTube Music app or with one click in the UI.
-- 🎬 **Album versions instead of music videos** – if a playlist contains a music video, the clean album
-  track is downloaded instead (configurable).
-- 🎧 **Best quality without re-encoding** – Opus (default) or M4A are the original YouTube streams;
-  MP3 is available for old devices.
-- 🗑️ **Trash with automatic restore** – removed tracks wait in a hidden trash folder for 30 days (configurable).
-  Re-add a song on YouTube Music and it is restored instantly, without downloading again.
-- 🛡️ **Safety nets** – if YouTube suddenly reports a half-empty playlist or a missing library, nothing is
-  deleted until you approve it in the UI.
-- 🖥️ **Web UI** – dashboard with live progress, playlist picker, track browser with retry, trash, logs and
-  all settings. Dark & light mode, works on a phone.
-- 🐳 **Docker, multi-arch** (amd64 / arm64 — Apple Silicon, Raspberry Pi), `PUID`/`PGID`, health check,
-  restart-safe.
-- 🧠 **Resilient** – yt-dlp updates itself daily, failed downloads are retried with back-off, YouTube rate
-  limiting pauses downloads automatically, interrupted runs pick up where they stopped.
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>🔄 Set and forget</h3>
+      Checks YouTube Music every hour and applies additions, removals and re-ordering. New playlists
+      start syncing on their own.
+    </td>
+    <td width="33%" valign="top">
+      <h3>📃 Same order everywhere</h3>
+      One <code>.m3u8</code> per playlist in the exact YouTube Music order, with relative paths — imported
+      by Jellyfin, Navidrome, Symfonium, VLC, foobar2000…
+    </td>
+    <td width="33%" valign="top">
+      <h3>🗂️ Playlists as folders</h3>
+      <code>Road Trip/Digital Love.opus</code>, just like on YouTube Music. A song in several playlists is
+      stored once and hard-linked. Prefer <code>Artist/Album</code>? One click.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <h3>🎧 Original quality</h3>
+      Opus or M4A straight from YouTube, no re-encoding. Album versions instead of music videos, proper tags,
+      embedded covers and synced lyrics.
+    </td>
+    <td valign="top">
+      <h3>🛡️ Nothing gets lost</h3>
+      Removed tracks wait 30 days in a trash and come back instantly if you re-add them. Suspicious mass
+      removals wait for your approval.
+    </td>
+    <td valign="top">
+      <h3>🐳 Runs anywhere</h3>
+      One Docker container for amd64 and arm64 (Apple Silicon, Raspberry Pi). yt-dlp keeps itself up to
+      date; interrupted runs resume.
+    </td>
+  </tr>
+</table>
+
+## Quick start
+
+You need [Docker](https://docs.docker.com/get-docker/) (Docker Desktop or [OrbStack](https://orbstack.dev) on macOS).
+
+**1. Start the container**
+
+```bash
+mkdir yt-music && cd yt-music
+curl -O https://raw.githubusercontent.com/RafalPolawski/YT-Music-Downloader/main/docker-compose.yml
+# set the folder your music should go to: the left side of ":/music" in docker-compose.yml
+docker compose up -d
+```
+
+**2. Open http://localhost:8080** (or `http://<server-ip>:8080` from another device) and connect your
+YouTube Music account in **Settings** — the steps are shown right there and [explained below](#connecting-your-account).
+
+**3. Pick your playlists.** All playlists are enabled by default (except *Liked Music*, which is usually
+huge — enable it if you want it). The first sync starts 5 minutes after connecting, or immediately when you
+press **Sync now**.
+
+**4. Point your music server at the folder** — see [Jellyfin & Symfonium](#jellyfin--symfonium).
+
+<details>
+<summary>Prefer to build the image yourself?</summary>
+
+```bash
+git clone https://github.com/RafalPolawski/YT-Music-Downloader.git
+cd YT-Music-Downloader
+# in docker-compose.yml: comment out "image:" and uncomment "build: ."
+docker compose up -d --build
+```
+</details>
+
+## A quick tour
+
+### Dashboard
+
+The screenshot at the top: live progress of the current sync with every download in flight, library stats
+and a feed of what changed — added, removed, restored, failed. **Stop** cancels the current run; **Pause**
+also holds the automatic schedule until you resume (*Sync now* still works).
+
+### Playlists
+
+Every playlist in your library — your own and saved ones — with a switch to mirror it or not. The progress
+bar shows how much of it is already on disk; the filters find playlists that need attention.
+
+<p align="center"><img src="docs/screenshots/playlists.png" alt="Playlists page" width="100%"></p>
+
+### Tracks
+
+Search everything that is synced, filter by status or playlist, see why a download failed and retry it.
+Failed downloads are also retried automatically, with growing pauses.
+
+<p align="center"><img src="docs/screenshots/tracks.png" alt="Tracks page" width="100%"></p>
+
+### Duplicates
+
+Finds songs that are in the same playlist twice — the same video added again, or the music video next to
+the album version. It suggests which one to keep, but you can remove any entry: right here (for playlists
+you own) or in the YouTube Music app. Nothing is ever removed automatically.
+
+<p align="center"><img src="docs/screenshots/duplicates.png" alt="Duplicates page" width="100%"></p>
+
+### Trash
+
+Tracks you remove on YouTube Music land in a hidden trash folder first and are deleted after 30 days.
+Changed your mind? Add the song back on YouTube Music and the next sync restores it — no download needed.
+
+<p align="center"><img src="docs/screenshots/trash.png" alt="Trash page" width="100%"></p>
+
+### Library layout
+
+By default the folder mirrors YouTube Music: one folder per playlist. Switch to the classic
+`Artist/Album/01 Title` library (best for album and artist views in Jellyfin, Navidrome or Plex),
+`Artist/Title` or one flat folder — saving reorganizes the existing files right away, nothing is downloaded
+again.
+
+<p align="center"><img src="docs/screenshots/library-layout.png" alt="Folder layout setting" width="80%"></p>
+
+### On your phone, dark or light
+
+The whole UI works on a phone, so you can check on things from the couch. Dark and light themes follow your
+system, or the toggle in the sidebar.
+
+<p align="center"><img src="docs/screenshots/mobile.png" alt="The web UI on a phone" width="100%"></p>
+<p align="center"><img src="docs/screenshots/dashboard-light.png" alt="Dashboard in the light theme" width="100%"></p>
+
+## Connecting your account
+
+Go to **Settings → Connect YouTube Music** and follow the steps shown there:
+
+1. Open [music.youtube.com](https://music.youtube.com) in a desktop browser and sign in.
+   *Tip: use a private window and simply close it afterwards — logging out would invalidate the copied session.*
+2. Open developer tools (`F12` / `⌥⌘I`) → **Network** tab → type `browse` in the filter.
+3. Click **Library** in YouTube Music so a `browse` request (POST) appears.
+4. Right-click it → **Copy → Copy request headers** (Firefox: *Copy Request Headers*; *Copy as cURL* also works).
+5. Paste into the box and click **Connect**.
+
+<p align="center"><img src="docs/screenshots/connect.png" alt="Connect YouTube Music form" width="80%"></p>
+
+The session stays valid for a long time (typically months to years) as long as you don't sign out of it.
+If it ever expires, the dashboard tells you and you just paste fresh headers.
+
+> Upgrading from the old script? You can paste the contents of your old `headers.json` instead.
+
+<details>
+<summary>Alternative: “Sign in with Google” (OAuth device code)</summary>
+
+The **Sign in with Google** tab works like signing in on a TV: the app shows a code, you confirm it at
+[google.com/device](https://www.google.com/device) on any device. Google only allows this with your own
+OAuth client, which is a one-time, free setup:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/) create a project and enable **YouTube Data API v3**.
+2. **APIs & Services → OAuth consent screen**: user type *External*, add your Google account as a **test user**.
+3. **Credentials → Create credentials → OAuth client ID**, type **TVs and Limited Input devices**.
+4. Paste the client ID and secret in the app, click **Get sign-in code** and confirm the code.
+
+The browser-session method stays the recommended one: it needs no Google Cloud project, is the most
+reliable with YouTube Music, and is required for *Download as signed-in user*.
+</details>
 
 ## How it works
 
@@ -78,91 +217,12 @@ Every sync run:
 4. Writes one `.m3u8` per playlist, deletes trash older than the retention period and (optionally) asks
    Jellyfin to rescan.
 
-## Quick start
-
-You need [Docker](https://docs.docker.com/get-docker/) (Docker Desktop or [OrbStack](https://orbstack.dev) on macOS).
-
-### 1. Start the container
-
-```bash
-mkdir yt-music && cd yt-music
-curl -O https://raw.githubusercontent.com/RafalPolawski/YT-Music-Downloader/main/docker-compose.yml
-```
-
-Edit `docker-compose.yml` and set the folder your music should go to (left side of `:/music`), then:
-
-```bash
-docker compose up -d
-```
-
-Open **http://localhost:8080** (or `http://<server-ip>:8080` from another device).
-
-<details>
-<summary>Prefer to build the image yourself?</summary>
-
-```bash
-git clone https://github.com/RafalPolawski/YT-Music-Downloader.git
-cd YT-Music-Downloader
-# in docker-compose.yml: comment out "image:" and uncomment "build: ."
-docker compose up -d --build
-```
-</details>
-
-### 2. Connect your YouTube Music account
-
-Go to **Settings → Connect YouTube Music** and follow the steps shown there:
-
-1. Open [music.youtube.com](https://music.youtube.com) in a desktop browser and sign in.
-   *Tip: use a private window and simply close it afterwards — logging out would invalidate the copied session.*
-2. Open developer tools (`F12` / `⌥⌘I`) → **Network** tab → type `browse` in the filter.
-3. Click **Library** in YouTube Music so a `browse` request (POST) appears.
-4. Right-click it → **Copy → Copy request headers** (Firefox: *Copy Request Headers*; *Copy as cURL* also works).
-5. Paste into the box and click **Connect**.
-
-The session stays valid for a long time (typically months to years) as long as you don't sign out of it.
-If it ever expires, the dashboard tells you and you just paste fresh headers.
-
-> Upgrading from the old script? You can paste the contents of your old `headers.json` instead.
-
-<details>
-<summary>Alternative: “Sign in with Google” (OAuth device code)</summary>
-
-The **Sign in with Google** tab works like signing in on a TV: the app shows a code, you confirm it at
-[google.com/device](https://www.google.com/device) on any device. Google only allows this with your own
-OAuth client, which is a one-time, free setup:
-
-1. In [Google Cloud Console](https://console.cloud.google.com/) create a project and enable **YouTube Data API v3**.
-2. **APIs & Services → OAuth consent screen**: user type *External*, add your Google account as a **test user**.
-3. **Credentials → Create credentials → OAuth client ID**, type **TVs and Limited Input devices**.
-4. Paste the client ID and secret in the app, click **Get sign-in code** and confirm the code.
-
-The browser-session method stays the recommended one: it needs no Google Cloud project, is the most
-reliable with YouTube Music, and is required for *Download as signed-in user*.
-</details>
-
-### 3. Pick your playlists
-
-After connecting you land on **Playlists**. All your playlists are enabled by default (except *Liked Music*,
-which is usually huge — enable it if you want it). The first sync starts 5 minutes after connecting, or
-immediately when you press **Sync now**.
-
-![Playlists](docs/screenshots/playlists.png)
-
-<details>
-<summary>Track browser (light theme)</summary>
-
-![Tracks](docs/screenshots/tracks-light.png)
-</details>
-
-### 4. Point your music server at the folder
-
-See [Jellyfin & Symfonium](#jellyfin--symfonium) below.
-
 ## What ends up on disk
 
 ```text
 music/
 ├── Road Trip/                         ← one folder per playlist (default layout)
+│   ├── cover.jpg                      ← generated playlist cover
 │   ├── Digital Love.opus
 │   ├── Digital Love.lrc               ← synced lyrics (when available)
 │   └── Kong.opus
@@ -188,10 +248,8 @@ where the folder is mounted:
 ../Road Trip/Kong.opus
 ```
 
-**Other layouts** (Settings → Library): `Artist/Album/01 Title` — the classic library that gives the cleanest
-album and artist views in Jellyfin/Navidrome/Plex, plus `Artist/Title` and one flat folder. Saving a different
-layout reorganizes the existing files right away, nothing is downloaded again. Hard links need the music folder
-on one disk; where they are not supported (some network shares) a normal copy is made.
+Hard links need the music folder on one disk; where they are not supported (some network shares) a normal
+copy is made.
 
 ## Jellyfin & Symfonium
 
@@ -208,9 +266,13 @@ on one disk; where they are not supported (some network shares) a normal copy is
 
 **Covers in the playlist layout:** Jellyfin treats every folder as one album, so the songs of a playlist
 folder share that album's picture — which can look like "wrong" covers on some songs. To make it
-intentional, the app puts a generated `cover.jpg` with the playlist name into every playlist folder (Settings
-→ *Folder covers*). The real cover of each song stays embedded in its file; if you want Jellyfin and Symfonium
-to show per-album artwork everywhere, use the `Artist/Album/Track` layout.
+intentional, the app puts a generated `cover.jpg` with the playlist name into every playlist folder
+(Settings → *Folder covers*):
+
+<p align="center"><img src="docs/screenshots/covers.png" alt="Generated playlist covers" width="100%"></p>
+
+The real cover of each song stays embedded in its file; if you want Jellyfin and Symfonium to show per-album
+artwork everywhere, use the `Artist/Album/Track` layout.
 
 **Navidrome** works the same way — it imports `.m3u8` playlists from the music folder automatically.
 
@@ -243,7 +305,7 @@ Almost everything is configured in the web UI and stored in `config/settings.jso
 | Sync new playlists automatically | on | New playlists in your library start syncing by themselves. |
 | Format | Opus | `opus` / `m4a` (original streams) or `mp3` (re-encoded V0). |
 | Prefer album versions | on | Download the album track instead of a music video. |
-| Lyrics / album covers | on | Embedded lyrics + `.lrc`, `cover.jpg` per album folder. |
+| Lyrics / folder covers | on | Embedded lyrics + `.lrc`, `cover.jpg` per album or playlist folder. |
 | Folder layout | Playlist/Track | Also `Artist/Album/Track`, `Artist/Track` or one flat folder. |
 | Playlist files folder | `Playlists` | Where the `.m3u8` files go (inside the music folder). |
 | Keep removed tracks for | 30 days | `0` deletes immediately. |
@@ -279,6 +341,29 @@ and don't expose port 8080 to the internet (use a VPN such as Tailscale for remo
   playlists vanish from the library at the same time, nothing is removed until you click **Approve** —
   this protects you from hiccups on YouTube's side.
 
+## FAQ
+
+**Do I need YouTube Music Premium?**
+No, a free account works. With Premium and *Download as signed-in user* enabled, the 256 kbps streams are
+used where available.
+
+**Does the app know my Google password?**
+No. It keeps the browser session you paste (or an OAuth token) in `config/` on your machine and uses it
+only for requests to YouTube.
+
+**Do I need Jellyfin?**
+No. The result is a plain folder of tagged audio files plus `.m3u8` playlists — use it with any player or
+music server, or copy it to a phone.
+
+**What happens when I rename or delete a playlist on YouTube Music?**
+A renamed playlist's folder and `.m3u8` are renamed at the next sync. A deleted playlist disappears from the
+folder, and its songs go to the trash unless another synced playlist still has them.
+
+**Will YouTube mind?**
+A check is a few light requests per playlist once an hour, and downloads only happen when something
+changed. They run two at a time with a pause in between, and the app backs off on its own when YouTube
+starts rate-limiting.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -299,7 +384,7 @@ docker compose pull && docker compose up -d
 ```
 
 Settings, the account connection and the sync state live in `config/`, so updates are safe.
-Image tags: `latest` is the newest release, `1` stays on 1.x releases, `1.0.0` pins an exact
+Image tags: `latest` is the newest release, `1` stays on 1.x releases, `1.2.0` pins an exact
 version and `edge` follows the `main` branch. What changed in each version is listed in the
 [changelog](CHANGELOG.md) and on the [releases page](https://github.com/RafalPolawski/YT-Music-Downloader/releases).
 
@@ -327,6 +412,7 @@ python -m pytest
 | `ytmd/downloader.py` | yt-dlp subprocess wrapper, progress and error classification |
 | `ytmd/tagger.py` | Tags, cover art and lyrics for Opus / M4A / MP3 |
 | `ytmd/library.py` | File naming, folder layout, trash, playlist files |
+| `ytmd/duplicates.py`, `ytmd/covers.py` | Duplicate finder, generated playlist covers |
 | `ytmd/db.py` | SQLite state |
 | `ytmd/scheduler.py`, `ytmd/updater.py` | Periodic runs, yt-dlp self-update |
 | `ytmd/web/` | FastAPI backend and the single-page web UI (no build step) |
@@ -340,6 +426,7 @@ number. GitHub Actions creates the GitHub release from the changelog and publish
 
 This project is meant for personal backups of music you have access to. Respect YouTube's Terms of
 Service and copyright law in your country. It is not affiliated with YouTube or Google.
+The playlists, artists and artwork in the screenshots are made up.
 
 ## License
 

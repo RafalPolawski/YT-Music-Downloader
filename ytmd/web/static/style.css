@@ -82,7 +82,7 @@ p { margin: 0 0 10px; }
 .sidebar-foot .row { display: flex; align-items: center; gap: 8px; }
 .theme-btn { margin-left: auto; }
 
-.main { padding: 28px 34px 60px; max-width: 1280px; width: 100%; }
+.main { padding: 28px 34px 60px; max-width: 1280px; width: 100%; min-width: 0; }
 .page-head { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
 .page-head .spacer { flex: 1; }
 .page-head p { margin: 4px 0 0; }
@@ -294,4 +294,9 @@ tbody tr:hover td { background: rgba(139, 92, 246, .04); }
   .pl-thumb { width: 40px; height: 40px; }
   .pl-row > .switch { grid-column: 3; grid-row: 1; }
   .pl-status { grid-column: 2 / 4; grid-row: 2; justify-content: flex-start; }
+  .dup-table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .dup-table tr:last-child { border-bottom: 0; }
+  .dup-table td { padding: 0; border: 0; }
+  .dup-table td:first-child, .dup-table td:last-child { flex-basis: 100%; text-align: left !important; }
+  .dup-table .cell-track { min-width: 0; }
 }
