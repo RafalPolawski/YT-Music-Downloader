@@ -1,7 +1,7 @@
 # Runtime dependencies of the Docker image. Versions are pinned for reproducible builds
 # (Dependabot proposes updates). yt-dlp is the exception: it must stay current, so the
 # image installs the latest release and the app keeps it updated at runtime.
-fastapi==0.161.0
+fastapi==0.162.0
 uvicorn==0.54.0
 ytmusicapi==1.12.3
 mutagen==1.48.1
