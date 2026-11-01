@@ -4,11 +4,11 @@
 # Base image versions are written out (no ARGs) so Dependabot can keep them current.
 
 # yt-dlp needs a JavaScript runtime to solve YouTube's player challenges.
-FROM denoland/deno:bin-2.9.7 AS deno
+FROM denoland/deno:bin-2.9.8 AS deno
 # Static ffmpeg/ffprobe builds (amd64 + arm64), much smaller than Debian's ffmpeg package.
 FROM mwader/static-ffmpeg:9.0.2-1 AS ffmpeg
 
-FROM python:3.13-slim
+FROM python:3.15-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
