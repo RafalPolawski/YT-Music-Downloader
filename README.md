@@ -156,9 +156,9 @@ Each entry links to the song on YouTube Music.
 ### Library layout
 
 By default the folder mirrors YouTube Music: one folder per playlist. Switch to the classic
-`Artist/Album/01 Title` library (best for album and artist views in Jellyfin, Navidrome or Plex),
-`Artist/Title` or one flat folder — saving reorganizes the existing files right away, nothing is downloaded
-again.
+`Artist/Album/01 Title` library (the right choice for Jellyfin and Plex, see
+[below](#jellyfin--symfonium)), `Artist/Title` or one flat folder — saving reorganizes the existing files
+right away, nothing is downloaded again.
 
 <p align="center"><img src="docs/screenshots/library-layout.png" alt="Folder layout setting" width="80%"></p>
 
@@ -232,7 +232,6 @@ Every sync run:
 ```text
 music/
 ├── Road Trip/                         ← one folder per playlist (default layout)
-│   ├── cover.jpg                      ← generated playlist cover
 │   ├── Digital Love.opus
 │   ├── Digital Love.lrc               ← synced lyrics (when available)
 │   └── Kong.opus
@@ -274,17 +273,20 @@ copy is made.
 4. In **Symfonium**, add your Jellyfin server as a media provider. Playlists and new tracks appear after the
    next provider sync.
 
-**Covers in the playlist layout:** Jellyfin treats every folder as one album, so the songs of a playlist
-folder share that album's picture — which can look like "wrong" covers on some songs. To make it
-intentional, the app puts a generated `cover.jpg` with the playlist name into every playlist folder
-(Settings → *Folder covers*):
+**Use the `Artist/Album/Track` layout with Jellyfin (and Plex).** They build albums from folders, so with
+the default playlist layout every playlist folder turns into one "album" named after one of its songs, and
+Symfonium shows that name as the album of every song in it. With `Artist/Album/Track` (Settings → Library)
+albums, artists and covers are correct, and your playlists stay exactly as on YouTube Music — they come
+from the `.m3u8` files, and Jellyfin builds their pictures from the covers of the songs. Switching
+reorganizes the files without downloading anything again.
 
-<p align="center"><img src="docs/screenshots/covers.png" alt="Generated playlist covers" width="100%"></p>
+**Navidrome** groups albums by tags rather than folders, so any layout works there; it imports the `.m3u8`
+playlists from the music folder automatically.
 
-The real cover of each song stays embedded in its file; if you want Jellyfin and Symfonium to show per-album
-artwork everywhere, use the `Artist/Album/Track` layout.
-
-**Navidrome** works the same way — it imports `.m3u8` playlists from the music folder automatically.
+> Upgrading from 1.2.0–1.3.0? Those versions put a generated `cover.jpg` into every playlist folder, and
+> Jellyfin showed it on every song. The app now deletes those files at the next sync. Jellyfin keeps the
+> pictures it already cached, so afterwards run **Dashboard → Libraries → ⋯ → Refresh metadata** on the
+> music library with *Replace existing images* ticked.
 
 ## Running 24/7 on a Mac mini (Apple Silicon)
 
@@ -315,7 +317,7 @@ Almost everything is configured in the web UI and stored in `config/settings.jso
 | Sync new playlists automatically | on | New playlists in your library start syncing by themselves. |
 | Format | Opus | `opus` / `m4a` (original streams) or `mp3` (re-encoded V0). |
 | Prefer album versions | on | Download the album track instead of a music video. |
-| Lyrics / folder covers | on | Embedded lyrics + `.lrc`, `cover.jpg` per album or playlist folder. |
+| Lyrics / album folder covers | on | Embedded lyrics + `.lrc`, `cover.jpg` per album folder (Artist/Album layout). |
 | Folder layout | Playlist/Track | Also `Artist/Album/Track`, `Artist/Track` or one flat folder. |
 | Playlist files folder | `Playlists` | Where the `.m3u8` files go (inside the music folder). |
 | Keep removed tracks for | 30 days | `0` deletes immediately. |

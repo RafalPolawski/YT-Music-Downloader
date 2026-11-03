@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Every song in Jellyfin (and Symfonium) showed its playlist's generated cover instead of its own: Jellyfin
+  gives a folder's `cover.jpg` to every song in it. Playlist folders no longer get a generated cover, and
+  the ones 1.2.0–1.3.0 wrote are deleted at the next sync (a `cover.jpg` of your own is kept). Afterwards
+  refresh the music library in Jellyfin with *Replace existing images* to drop the cached pictures.
+
+### Changed
+
+- Settings and README recommend the Artist/Album/Track layout for Jellyfin and Plex: they build albums
+  from folders, so playlist folders show up there as albums named after one of their songs.
+
 ## [1.3.0] - 2026-10-29
 
 ### Added

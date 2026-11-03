@@ -1,4 +1,8 @@
-"""Simple generated cover art for playlist folders (used by the "playlist" layout)."""
+"""The cover art 1.2.0-1.3.0 generated for playlist folders.
+
+No longer written (Jellyfin showed it on every song of the folder); kept so the sync engine can recognise
+those exact files and delete them.
+"""
 
 from __future__ import annotations
 
