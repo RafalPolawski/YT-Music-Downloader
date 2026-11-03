@@ -156,9 +156,9 @@ Przy każdym wpisie jest link do utworu w YouTube Music.
 ### Układ biblioteki
 
 Domyślnie folder odwzorowuje YouTube Music: jeden folder na playlistę. Możesz przełączyć na klasyczną
-bibliotekę `Wykonawca/Album/01 Tytuł` (najlepsze widoki albumów i wykonawców w Jellyfinie, Navidrome
-i Plexie), `Wykonawca/Tytuł` albo jeden płaski folder — zapisanie od razu przebudowuje istniejące pliki,
-nic nie jest pobierane ponownie.
+bibliotekę `Wykonawca/Album/01 Tytuł` (właściwy wybór dla Jellyfina i Plexa, zobacz
+[niżej](#jellyfin-i-symfonium)), `Wykonawca/Tytuł` albo jeden płaski folder — zapisanie od razu przebudowuje
+istniejące pliki, nic nie jest pobierane ponownie.
 
 <p align="center"><img src="docs/screenshots/library-layout.png" alt="Ustawienie układu folderów" width="80%"></p>
 
@@ -232,7 +232,6 @@ Każda synchronizacja:
 ```text
 music/
 ├── Road Trip/                         ← jeden folder na playlistę (domyślny układ)
-│   ├── cover.jpg                      ← wygenerowana okładka playlisty
 │   ├── Digital Love.opus
 │   ├── Digital Love.lrc               ← zsynchronizowany tekst (jeśli jest)
 │   └── Kong.opus
@@ -275,17 +274,20 @@ udziały sieciowe), robiona jest zwykła kopia.
 4. W **Symfonium** dodaj serwer Jellyfin jako źródło (media provider). Playlisty i nowe utwory pojawią się
    po kolejnej synchronizacji źródła.
 
-**Okładki w układzie playlist:** Jellyfin traktuje każdy folder jako jeden album, więc utwory z folderu
-playlisty dostają wspólny obrazek albumu — stąd wrażenie „złych” okładek przy niektórych utworach. Żeby to
-było celowe, aplikacja wrzuca do każdego folderu playlisty wygenerowany `cover.jpg` z nazwą playlisty
-(Settings → *Folder covers*):
+**Z Jellyfinem (i Plexem) używaj układu `Artist/Album/Track`.** Budują one albumy z folderów, więc przy
+domyślnym układzie playlist każdy folder playlisty staje się jednym „albumem” nazwanym po którymś z jego
+utworów, a Symfonium pokazuje tę nazwę jako album każdego utworu z tego folderu. Z `Artist/Album/Track`
+(Settings → Library) albumy, wykonawcy i okładki są poprawne, a playlisty zostają dokładnie takie jak
+w YouTube Music — biorą się z plików `.m3u8`, a Jellyfin składa ich obrazki z okładek utworów. Przełączenie
+przebudowuje pliki bez ponownego pobierania.
 
-<p align="center"><img src="docs/screenshots/covers.png" alt="Wygenerowane okładki playlist" width="100%"></p>
+**Navidrome** grupuje albumy po tagach, a nie po folderach, więc działa z każdym układem; playlisty `.m3u8`
+importuje z folderu z muzyką automatycznie.
 
-Prawdziwa okładka każdego utworu zostaje osadzona w pliku; jeśli chcesz, żeby Jellyfin i Symfonium wszędzie
-pokazywały okładki albumów, użyj układu `Artist/Album/Track`.
-
-**Navidrome** działa tak samo — automatycznie importuje playlisty `.m3u8` z folderu z muzyką.
+> Aktualizujesz z 1.2.0–1.3.0? Te wersje wrzucały do każdego folderu playlisty wygenerowany `cover.jpg`,
+> a Jellyfin pokazywał go przy każdym utworze. Aplikacja usuwa te pliki przy kolejnej synchronizacji.
+> Jellyfin trzyma obrazki, które już zapamiętał, więc potem uruchom **Dashboard → Libraries → ⋯ → Refresh
+> metadata** dla biblioteki muzyki z zaznaczonym *Replace existing images*.
 
 ## Mac mini (Apple Silicon) 24/7
 
@@ -316,7 +318,7 @@ Prawie wszystko ustawia się w panelu WWW; zapisuje się to w `config/settings.j
 | Sync new playlists automatically | wł. | Nowe playlisty w bibliotece same zaczynają się synchronizować. |
 | Format | Opus | `opus` / `m4a` (oryginalne strumienie) lub `mp3` (przekodowane V0). |
 | Prefer album versions | wł. | Pobiera utwór z albumu zamiast teledysku. |
-| Lyrics / Folder covers | wł. | Tekst w pliku + `.lrc`, `cover.jpg` w folderze albumu lub playlisty. |
+| Lyrics / Album folder covers | wł. | Tekst w pliku + `.lrc`, `cover.jpg` w folderze albumu (układ Artist/Album). |
 | Folder layout | Playlist/Track | Albo `Artist/Album/Track`, `Artist/Track` lub jeden płaski folder. |
 | Playlist files folder | `Playlists` | Gdzie trafiają pliki `.m3u8` (wewnątrz folderu z muzyką). |
 | Keep removed tracks for | 30 dni | `0` = usuwanie od razu. |

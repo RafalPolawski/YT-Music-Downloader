@@ -908,15 +908,15 @@ const Settings = {
         ])}
         ${this.toggle("prefer_album_version", "Prefer album versions", "When a playlist contains a music video, download the matching album track instead: clean audio without intros/skits and proper album tags.")}
         ${this.toggle("write_lyrics", "Lyrics", "Embed lyrics and save synced <code>.lrc</code> files next to the tracks when YouTube Music has them.")}
-        ${this.toggle("write_album_covers", "Folder covers", "Write a <code>cover.jpg</code> into every folder: the album art in the Artist/Album layout, a generated cover with the playlist name in the Playlist layout. Each song's own cover art is always embedded in the file.")}
+        ${this.toggle("write_album_covers", "Album folder covers", "Write the album art as <code>cover.jpg</code> into every album folder (Artist/Album layout). Each song's own cover art is always embedded in the file.")}
         ${this.toggle("sponsorblock_remove_offtopic", "Cut non-music parts", "Uses SponsorBlock to remove talking/skits from music videos (only affects videos that have segments).")}
       </div>
 
       <div class="card"><div class="card-head"><h2>Library</h2></div>
         ${this.field("Music folder", "Set by the Docker volume / <code>YTMD_MUSIC_DIR</code>.", `<input type="text" value="${esc(s.paths?.music || "")}" disabled>`)}
         ${this.radios("layout", "Folder layout", "Saving a new layout reorganizes the existing files right away.", [
-          { value: "playlist", title: "Playlist / Track <span class='badge violet'>default</span>", desc: "Mirrors YouTube Music: one folder per playlist. A song in several playlists gets a file in each folder (hard links where the disk supports them, so no extra space).", example: "Road Trip/Digital Love.opus" },
-          { value: "artist_album", title: "Artist / Album / Track", desc: "Classic library for the album and artist views of Jellyfin, Navidrome and Plex. Tracks without an album go to Artist/Singles.", example: "Daft Punk/Discovery/03 Digital Love.opus" },
+          { value: "playlist", title: "Playlist / Track <span class='badge violet'>default</span>", desc: "Mirrors YouTube Music: one folder per playlist. A song in several playlists gets a file in each folder (hard links where the disk supports them, so no extra space). Jellyfin and Plex treat every folder as one album, so their album view gets mixed up — use Artist / Album / Track for them.", example: "Road Trip/Digital Love.opus" },
+          { value: "artist_album", title: "Artist / Album / Track", desc: "Classic library with correct albums, artists and covers in Jellyfin, Symfonium, Plex and Navidrome. Playlists stay exactly as on YouTube Music through the .m3u8 files. Tracks without an album go to Artist/Singles.", example: "Daft Punk/Discovery/03 Digital Love.opus" },
           { value: "artist", title: "Artist / Track", example: "Daft Punk/Digital Love.opus" },
           { value: "flat", title: "One folder", example: "Daft Punk - Digital Love.opus" },
         ])}

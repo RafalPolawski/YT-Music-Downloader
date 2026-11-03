@@ -560,12 +560,7 @@ class SyncEngine:
 
         summary.playlist_files_changed += self._sync_copies(settings)
         names = self._playlist_names()
-        if settings.layout == "playlist" and settings.write_album_covers:
-            titles = {p["id"]: p["title"] for p in self.db.active_playlists()}
-            for pid, name in names.items():
-                folder = self.music_dir / name
-                if folder.is_dir() and not (folder / COVER_FILE).exists():
-                    (folder / COVER_FILE).write_bytes(playlist_cover(titles[pid]))
+        self._remove_generated_covers(names)
         active_ids = set()
         for p in self.db.active_playlists():
             active_ids.add(p["id"])
@@ -590,6 +585,25 @@ class SyncEngine:
                 summary.playlist_files_changed += 1
             if not p["in_library"]:
                 self.db.delete_playlist(p["id"])
+
+    def _remove_generated_covers(self, names: dict[str, str]) -> None:
+        """Delete the playlist covers that 1.2.0-1.3.0 put into every playlist folder (once).
+
+        Jellyfin gives a folder's cover.jpg to every song in it, so each song showed the playlist cover instead
+        of its own. Only files identical to the generated cover are deleted; a cover.jpg of your own stays.
+        """
+        if self.db.get_kv("generated_covers_removed"):
+            return
+        titles = {p["id"]: p["title"] for p in self.db.playlists()}
+        for pid, name in names.items():
+            cover = self.music_dir / name / COVER_FILE
+            try:
+                if cover.is_file() and cover.read_bytes() == playlist_cover(titles[pid]):
+                    cover.unlink()
+                    log.info("Removed the generated playlist cover %s/%s", name, COVER_FILE)
+            except OSError as exc:
+                log.warning("Could not check %s: %s", cover, exc)
+        self.db.set_kv("generated_covers_removed", True)
 
     # ------------------------------------------------------------------ step 4: downloads
     def _download_options(self, settings: Settings) -> DownloadOptions:

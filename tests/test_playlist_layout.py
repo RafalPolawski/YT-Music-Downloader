@@ -36,7 +36,6 @@ def test_every_playlist_gets_its_own_folder(h):
                                "Chill/Kong.opus", "Chill/Teardrop.opus"}
     assert h.m3u8("Road Trip") == ["../Road Trip/Digital Love.opus", "../Road Trip/Kong.opus"]
     assert h.m3u8("Chill") == ["../Chill/Kong.opus", "../Chill/Teardrop.opus"]
-    assert (h.music / "Road Trip/cover.jpg").read_bytes()[:2] == b"\xff\xd8"  # generated playlist cover
 
 
 def test_copy_shares_the_downloaded_file(h):
@@ -160,20 +159,29 @@ def test_playlist_cover_is_not_carried_into_album_folders(h):
     assert not (h.music / "Road Trip").exists()
 
 
-def test_no_generated_covers_when_disabled(h):
-    h.settings.update({"write_album_covers": False})
-    h.sync()
+def test_playlist_folders_get_no_generated_cover(h):
+    h.sync()  # Jellyfin would show a folder's cover.jpg on every song in it
+    assert (h.music / "Road Trip/Digital Love.opus").exists()
     assert not (h.music / "Road Trip/cover.jpg").exists()
 
 
-def test_generated_cover_handles_polish_and_emoji():
-    import io
-
-    from PIL import Image
-
+def test_covers_generated_by_older_versions_are_removed_once(h):
     from ytmd.covers import playlist_cover
-    img = Image.open(io.BytesIO(playlist_cover("Ameryka Południowa ☕", size=300)))
-    assert img.size == (300, 300) and img.format == "JPEG"
+    h.sync()
+    h.db.set_kv("generated_covers_removed", None)  # as after an upgrade from 1.2.0-1.3.0
+    (h.music / "Road Trip/cover.jpg").write_bytes(playlist_cover("Road Trip"))
+    (h.music / "Chill/cover.jpg").write_bytes(b"my own picture")
+    h.sync()
+    assert not (h.music / "Road Trip/cover.jpg").exists()
+    assert (h.music / "Chill/cover.jpg").read_bytes() == b"my own picture"
+    (h.music / "Road Trip/cover.jpg").write_bytes(playlist_cover("Road Trip"))
+    h.sync()  # checked only once; anything put there later is left alone
+    assert (h.music / "Road Trip/cover.jpg").exists()
+
+
+def test_generated_cover_is_deterministic():
+    from ytmd.covers import playlist_cover
+    assert playlist_cover("Ameryka Południowa ☕") == playlist_cover("Ameryka Południowa ☕")
 
 
 def test_music_video_with_an_unrelated_counterpart_is_kept(harness):
