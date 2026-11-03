@@ -37,7 +37,7 @@ def test_track_relpath_layouts():
     assert track_relpath(t, "artist", "opus") == "A/Song.opus"
     assert track_relpath(t, "flat", "m4a") == "A, B - Song.m4a"
     single = {"title": "Song", "artists": [], "album": None}
-    assert track_relpath(single, "artist_album", "mp3") == "Unknown Artist/Singles/Song.mp3"
+    assert track_relpath(single, "artist_album", "mp3") == "Unknown Artist/Song/Song.mp3"
 
 
 def test_allocator_is_case_insensitive():
@@ -175,3 +175,19 @@ def test_oauth_credentials_are_loaded_as_oauth(tmp_path):
                {"client_id": "id", "client_secret": "secret"})
     assert auth_mode(env) == "oauth"
     assert make_client(env).yt.auth_type == AuthType.OAUTH_CUSTOM_CLIENT
+
+
+@pytest.mark.parametrize("fmt", ["opus", "m4a", "mp3"])
+def test_set_album_keeps_the_other_tags(audio_samples, tmp_path, fmt):
+    import shutil
+
+    from mutagen import File as MutagenFile
+
+    from ytmd.tagger import TrackTags, audio_info, set_album, write_tags
+    path = tmp_path / f"song.{fmt}"
+    shutil.copy(audio_samples[fmt], path)
+    write_tags(path, TrackTags(title="Song", artists=["Band"], video_id="v1"), b"")
+    set_album(path, "Song", ["Band"])
+    tags = MutagenFile(path, easy=True)
+    assert tags["album"] == ["Song"] and tags["title"] == ["Song"] and tags["artist"] == ["Band"]
+    assert audio_info(path)["video_id"] == "v1"

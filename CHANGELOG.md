@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Artist/Album layout: songs without an album on YouTube Music (singles, music videos, uploads) were
+  collected in one `Artist/Singles` folder per artist, which Jellyfin showed as an album called "Singles"
+  without a cover. Each such song now gets a folder of its own (`Artist/Title/Title.opus`) with its cover,
+  and its album tag is the song title, the way a single release is tagged. Existing files are moved and
+  re-tagged at the next sync, nothing is downloaded again.
+- Album folders that are missing their `cover.jpg` (e.g. after a failed image download) get it at the next
+  sync.
+
 ## [1.3.2] - 2026-11-03
 
 ### Changed

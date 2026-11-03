@@ -38,16 +38,16 @@ def test_first_sync_downloads_everything_and_writes_ordered_playlists(harness):
     assert sorted(h.downloader.calls) == ["a1", "b1", "c1", "d1"]  # b1 only once, LM disabled by default
     assert h.audio_files() == {
         "Alpha/Album A/04 First Song.opus",
-        "Beta/Singles/Second Song.opus",
-        "Gamma/Singles/Third Song.opus",
-        "Delta/Singles/Fourth Song.opus",
+        "Beta/Second Song/Second Song.opus",
+        "Gamma/Third Song/Third Song.opus",
+        "Delta/Fourth Song/Fourth Song.opus",
     }
     assert h.m3u8("Road Trip") == [
         "../Alpha/Album A/04 First Song.opus",
-        "../Beta/Singles/Second Song.opus",
-        "../Gamma/Singles/Third Song.opus",
+        "../Beta/Second Song/Second Song.opus",
+        "../Gamma/Third Song/Third Song.opus",
     ]
-    assert h.m3u8("Chill") == ["../Beta/Singles/Second Song.opus", "../Delta/Singles/Fourth Song.opus"]
+    assert h.m3u8("Chill") == ["../Beta/Second Song/Second Song.opus", "../Delta/Fourth Song/Fourth Song.opus"]
     assert not (h.music / "Playlists" / "Liked Music.m3u8").exists()
     assert (h.music / "Alpha/Album A/cover.jpg").exists()
 
@@ -59,8 +59,50 @@ def test_first_sync_downloads_everything_and_writes_ordered_playlists(harness):
     assert tags["tracktotal"] == ["9"]
     assert tags["ytmusic_video_id"] == ["a1"]
     assert "metadata_block_picture" in tags
-    multi = OggOpus(h.music / "Gamma/Singles/Third Song.opus")
+    multi = OggOpus(h.music / "Gamma/Third Song/Third Song.opus")
     assert multi["artist"] == ["Gamma", "Delta"]
+
+
+def test_song_without_an_album_is_its_own_album_with_its_cover(harness):
+    h = harness
+    basic_library(h)
+    h.sync()
+    single = h.music / "Beta/Second Song"
+    tags = OggOpus(single / "Second Song.opus")
+    assert tags["album"] == ["Second Song"] and tags["albumartist"] == ["Beta"]
+    assert (single / "cover.jpg").exists()  # the song's own picture, not one shared by a "Singles" folder
+
+
+def test_old_singles_folder_is_reorganized(harness):
+    h = harness
+    basic_library(h)
+    h.sync()
+    # how versions before this one stored a song without an album: Artist/Singles, no album tag
+    old = h.music / "Beta/Singles/Second Song.opus"
+    old.parent.mkdir()
+    os.replace(h.music / "Beta/Second Song/Second Song.opus", old)
+    (h.music / "Beta/Second Song/cover.jpg").unlink()
+    (h.music / "Beta/Second Song").rmdir()
+    tags = OggOpus(old)
+    del tags["album"], tags["albumartist"]
+    tags.save()
+    h.db.update_track("b1", path="Beta/Singles/Second Song.opus")
+
+    s = h.sync()
+    assert s.relocated == 1 and s.downloaded == 0
+    assert not (h.music / "Beta/Singles").exists()
+    moved = h.music / "Beta/Second Song/Second Song.opus"
+    assert OggOpus(moved)["album"] == ["Second Song"]
+    assert (moved.parent / "cover.jpg").exists()
+
+
+def test_missing_album_cover_is_added_again(harness):
+    h = harness
+    basic_library(h)
+    h.sync()
+    (h.music / "Alpha/Album A/cover.jpg").unlink()
+    h.sync()
+    assert (h.music / "Alpha/Album A/cover.jpg").exists()
 
 
 def test_second_sync_is_a_no_op(harness):
@@ -81,10 +123,10 @@ def test_order_changes_and_duplicates_follow_youtube_music(harness):
     h.client.tracks["PL1"] = [t["c1"], t["a1"], t["c1"], t["b1"]]
     h.sync()
     assert h.m3u8("Road Trip") == [
-        "../Gamma/Singles/Third Song.opus",
+        "../Gamma/Third Song/Third Song.opus",
         "../Alpha/Album A/04 First Song.opus",
-        "../Gamma/Singles/Third Song.opus",
-        "../Beta/Singles/Second Song.opus",
+        "../Gamma/Third Song/Third Song.opus",
+        "../Beta/Second Song/Second Song.opus",
     ]
 
 
@@ -98,10 +140,10 @@ def test_removed_track_goes_to_trash_and_comes_back_when_re_added(harness):
     h.client.tracks["PL1"] = [original[0], original[1]]
     s = h.sync()
     assert s.removed == 1
-    assert "Gamma/Singles/Third Song.opus" not in h.audio_files()
-    assert "Beta/Singles/Second Song.opus" in h.audio_files()
+    assert "Gamma/Third Song/Third Song.opus" not in h.audio_files()
+    assert "Beta/Second Song/Second Song.opus" in h.audio_files()
     assert not (h.music / "Gamma").exists()  # empty folders are cleaned up
-    assert (h.env.trash_dir / "Gamma/Singles/Third Song.opus").exists()
+    assert (h.env.trash_dir / "Gamma/Third Song/Third Song.opus").exists()
     assert h.db.track("c1")["status"] == "trashed"
     assert len(h.m3u8("Road Trip")) == 2
 
@@ -110,7 +152,7 @@ def test_removed_track_goes_to_trash_and_comes_back_when_re_added(harness):
     s = h.sync()
     assert s.restored == 1
     assert h.downloader.calls == []
-    assert "Gamma/Singles/Third Song.opus" in h.audio_files()
+    assert "Gamma/Third Song/Third Song.opus" in h.audio_files()
     assert h.db.track("c1")["status"] == "downloaded"
 
 
@@ -121,7 +163,7 @@ def test_trash_retention_zero_deletes_immediately(harness):
     h.settings.update({"trash_retention_days": 0})
     h.client.tracks["PL2"] = [h.client.tracks["PL2"][0]]
     h.sync()
-    assert "Delta/Singles/Fourth Song.opus" not in h.audio_files()
+    assert "Delta/Fourth Song/Fourth Song.opus" not in h.audio_files()
     assert h.engine.trash.items() == []
     assert h.db.track("d1") is None
 
@@ -132,7 +174,7 @@ def test_old_trash_is_purged(harness):
     h.sync()
     h.client.tracks["PL2"] = [h.client.tracks["PL2"][0]]
     h.sync()
-    trashed = h.env.trash_dir / "Delta/Singles/Fourth Song.opus"
+    trashed = h.env.trash_dir / "Delta/Fourth Song/Fourth Song.opus"
     old = time.time() - 31 * 86400
     os.utime(trashed, (old, old))
     s = h.sync()
@@ -250,7 +292,7 @@ def test_disabling_a_playlist_removes_its_exclusive_tracks_and_file(harness):
     s = h.sync()
     assert s.removed == 1  # d1; b1 is still in PL1
     assert not (h.music / "Playlists" / "Chill.m3u8").exists()
-    assert "Beta/Singles/Second Song.opus" in h.audio_files()
+    assert "Beta/Second Song/Second Song.opus" in h.audio_files()
 
 
 def test_playlist_deleted_on_youtube_music(harness):
@@ -343,7 +385,7 @@ def test_name_collisions_get_unique_files(harness):
     h = harness
     h.client.add_playlist("PL1", "Dupes", [track("x1", "Same", ["Band"]), track("x2", "Same", ["Band"])])
     h.sync()
-    assert h.audio_files() == {"Band/Singles/Same.opus", "Band/Singles/Same [x2].opus"}
+    assert h.audio_files() == {"Band/Same/Same.opus", "Band/Same/Same [x2].opus"}
 
 
 def test_changing_layout_moves_existing_files(harness):
@@ -365,7 +407,7 @@ def test_file_deleted_by_hand_is_downloaded_again(harness):
     h = harness
     basic_library(h)
     h.sync()
-    (h.music / "Delta/Singles/Fourth Song.opus").unlink()
+    (h.music / "Delta/Fourth Song/Fourth Song.opus").unlink()
     h.downloader.calls.clear()
     h.sync()
     assert h.downloader.calls == ["d1"]
@@ -374,7 +416,7 @@ def test_file_deleted_by_hand_is_downloaded_again(harness):
 def test_existing_file_is_adopted_instead_of_downloaded(harness, audio_samples):
     h = harness
     h.client.add_playlist("PL1", "One", [track("k1", "Kept", ["Keeper"])])
-    target = h.music / "Keeper/Singles/Kept.opus"
+    target = h.music / "Keeper/Kept/Kept.opus"
     target.parent.mkdir(parents=True)
     target.write_bytes(audio_samples["opus"].read_bytes())
     h.sync()
@@ -396,9 +438,9 @@ def test_title_change_on_youtube_music_renames_file(harness):
     h.sync()
     h.client.tracks["PL2"][1] = track("d1", "Fourth Song (Remastered)", ["Delta"])
     h.sync()
-    assert "Delta/Singles/Fourth Song (Remastered).opus" in h.audio_files()
-    assert "Delta/Singles/Fourth Song.opus" not in h.audio_files()
-    assert OggOpus(h.music / "Delta/Singles/Fourth Song (Remastered).opus")["title"] == ["Fourth Song (Remastered)"]
+    assert "Delta/Fourth Song (Remastered)/Fourth Song (Remastered).opus" in h.audio_files()
+    assert "Delta/Fourth Song/Fourth Song.opus" not in h.audio_files()
+    assert OggOpus(h.music / "Delta/Fourth Song (Remastered)/Fourth Song (Remastered).opus")["title"] == ["Fourth Song (Remastered)"]
 
 
 def test_relocation_keeps_the_album_cover(harness):
@@ -422,7 +464,7 @@ def test_interrupted_reorganisation_is_recovered_on_start(harness, audio_samples
     h.client.lyrics_data["L1"] = {"text": "la", "synced": [(0, "la")]}
     h.client.watch["r1"] = {"lyrics_id": "L1", "counterpart": None}
     h.sync()
-    path = h.music / "Band/Singles/Song.opus"
+    path = h.music / "Band/Song/Song.opus"
     assert path.with_suffix(".lrc").exists()
     staging = h.env.tmp_dir / "relocate"
     staging.mkdir(parents=True)

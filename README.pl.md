@@ -279,7 +279,8 @@ domyślnym układzie playlist każdy folder playlisty staje się jednym „album
 utworów, a Symfonium pokazuje tę nazwę jako album każdego utworu z tego folderu. Z `Artist/Album/Track`
 (Settings → Library) albumy, wykonawcy i okładki są poprawne, a playlisty zostają dokładnie takie jak
 w YouTube Music — biorą się z plików `.m3u8`, a Jellyfin składa ich obrazki z okładek utworów. Przełączenie
-przebudowuje pliki bez ponownego pobierania.
+przebudowuje pliki bez ponownego pobierania. Utwór, który w YouTube Music nie ma albumu (singiel, teledysk
+albo upload), dostaje własny folder i pokazuje się jako jednoutworowy album z własną okładką.
 
 **Navidrome** grupuje albumy po tagach, a nie po folderach, więc działa z każdym układem; playlisty `.m3u8`
 importuje z folderu z muzyką automatycznie.

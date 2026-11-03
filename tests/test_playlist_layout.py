@@ -95,8 +95,8 @@ def test_switching_layouts_rebuilds_the_library(h):
     h.sync()
     h.settings.update({"layout": "artist_album"})
     h.sync()
-    assert h.audio_files() == {"Daft Punk/Discovery/03 Digital Love.opus", "Bonobo/Singles/Kong.opus",
-                               "Massive Attack/Singles/Teardrop.opus"}
+    assert h.audio_files() == {"Daft Punk/Discovery/03 Digital Love.opus", "Bonobo/Kong/Kong.opus",
+                               "Massive Attack/Teardrop/Teardrop.opus"}
     assert h.db.copies() == []
     h.settings.update({"layout": "playlist"})
     h.sync()

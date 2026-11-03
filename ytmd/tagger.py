@@ -199,6 +199,31 @@ def _tag_id3(path: Path, tags: TrackTags, cover: bytes | None) -> None:
     audio.save(path, v2_version=4)
 
 
+def set_album(path: Path, album: str, album_artists: list[str]) -> None:
+    """Change only the album and album artist of an already tagged file."""
+    suffix = path.suffix.lower()
+    if suffix in (".opus", ".ogg"):
+        audio = OggOpus(path)
+        audio["album"] = album
+        audio["albumartist"] = album_artists
+        audio.save()
+    elif suffix in (".m4a", ".mp4", ".aac"):
+        audio = MP4(path)
+        audio["\xa9alb"] = [album]
+        audio["aART"] = ["; ".join(album_artists)]
+        audio.save()
+    elif suffix == ".mp3":
+        try:
+            audio = ID3(path)
+        except ID3NoHeaderError:
+            audio = ID3()
+        audio.setall("TALB", [TALB(encoding=3, text=album)])
+        audio.setall("TPE2", [TPE2(encoding=3, text=album_artists)])
+        audio.save(path, v2_version=4)
+    else:
+        raise ValueError(f"Unsupported audio format: {suffix}")
+
+
 # ---------------------------------------------------------------------- inspection
 def audio_info(path: Path) -> dict | None:
     """Duration and embedded video id of a file, or None if it is not readable audio."""

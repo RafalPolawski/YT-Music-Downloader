@@ -37,7 +37,7 @@ from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_f
                           alternative_relpath, link_or_copy,
                           write_if_changed)
 from ytmd.logs import purge_logs
-from ytmd.tagger import TrackTags, audio_info, fetch_image, square_jpeg, to_lrc, write_tags
+from ytmd.tagger import TrackTags, audio_info, fetch_image, set_album, square_jpeg, to_lrc, write_tags
 from ytmd.ytmusic import (LIKED_MUSIC_ID, VIDEO_TYPE_SONG, AuthError, YTMusicClient, auth_mode, make_client,
                           netscape_cookies_from_auth)
 
@@ -505,10 +505,14 @@ class SyncEngine:
             target = music / desired
             move_file(tmp, target)
             self.db.update_track(t["video_id"], path=desired)
+            if not t.get("album"):
+                try:  # files tagged before songs without an album got one
+                    set_album(target, self._album_name(t), (t["artists"] or [])[:1])
+                except Exception as exc:
+                    log.warning("Could not tag %s: %s", desired, exc)
             folder_cover = target.parent / COVER_FILE
-            if settings.layout == "artist_album" and settings.write_album_covers and t.get("album") \
-                    and not folder_cover.exists():
-                if cover:
+            if settings.layout == "artist_album" and settings.write_album_covers and not folder_cover.exists():
+                if cover and t.get("album"):
                     shutil.copyfile(cover, folder_cover)
                 elif (art := self._cover(t, settings)):
                     folder_cover.write_bytes(art)
@@ -802,6 +806,30 @@ class SyncEngine:
         self.db.update_track(vid, **upd)
         return upd
 
+    @staticmethod
+    def _album_name(t: dict) -> str:
+        """The album tag: a song without an album on YouTube Music is a single, so it is its own album."""
+        return t.get("album") or t["title"]
+
+    def _ensure_album_covers(self, settings: Settings) -> int:
+        """Give every album folder of the Artist/Album layout its cover.jpg (e.g. after a failed download)."""
+        if settings.layout != "artist_album" or not settings.write_album_covers:
+            return 0
+        written, seen = 0, set()
+        for t in self.db.downloaded_tracks():
+            folder = (self.music_dir / t["path"]).parent
+            if folder in seen or folder == self.music_dir:
+                continue
+            seen.add(folder)
+            if self._cancel.is_set():
+                break
+            if folder.is_dir() and not (folder / COVER_FILE).exists() and (art := self._cover(t, settings)):
+                (folder / COVER_FILE).write_bytes(art)
+                written += 1
+        if written:
+            log.info("Added the cover to %d album folder(s)", written)
+        return written
+
     def _cover(self, t: dict, settings: Settings) -> bytes | None:
         key = t.get("album_id") if t.get("album_thumbnail") else t["video_id"]
         url = t.get("album_thumbnail") or t.get("thumbnail")
@@ -825,8 +853,8 @@ class SyncEngine:
             except Exception as exc:
                 log.debug("Lyrics lookup failed for %s: %s", t["video_id"], exc)
         tags = TrackTags(
-            title=t["title"], artists=t["artists"] or [], album=t.get("album"),
-            album_artists=(t.get("album_artists") or (t["artists"] or [])[:1]) if t.get("album") else [],
+            title=t["title"], artists=t["artists"] or [], album=self._album_name(t),
+            album_artists=t.get("album_artists") or (t["artists"] or [])[:1],
             year=t.get("year"), track_number=t.get("track_number"), track_total=t.get("track_total"),
             video_id=t["video_id"], lyrics=lyrics["text"] if lyrics else None,
         )
@@ -841,7 +869,7 @@ class SyncEngine:
             lrc.write_text(to_lrc(lyrics["synced"], tags), encoding="utf-8")
         elif lrc.exists() and not settings.write_lyrics:
             lrc.unlink()
-        if settings.write_album_covers and settings.layout == "artist_album" and t.get("album") and cover:
+        if settings.write_album_covers and settings.layout == "artist_album" and cover:
             folder_cover = target.parent / COVER_FILE
             if not folder_cover.exists():
                 folder_cover.write_bytes(cover)
@@ -877,6 +905,7 @@ class SyncEngine:
         self.state.update(phase="finishing", message="Cleaning up")
         summary.trash_purged = self.trash.purge(settings.trash_retention_days)
         purge_logs(self.env.log_dir, settings.log_retention_days)
+        self._ensure_album_covers(settings)
         for t in self.db.tracks_by_status(dbm.TRASHED):
             if not t["trash_path"] or not (self.trash.root / t["trash_path"]).exists():
                 self.db.delete_track(t["video_id"])

@@ -278,7 +278,9 @@ the default playlist layout every playlist folder turns into one "album" named a
 Symfonium shows that name as the album of every song in it. With `Artist/Album/Track` (Settings → Library)
 albums, artists and covers are correct, and your playlists stay exactly as on YouTube Music — they come
 from the `.m3u8` files, and Jellyfin builds their pictures from the covers of the songs. Switching
-reorganizes the files without downloading anything again.
+reorganizes the files without downloading anything again. A song that has no album on YouTube Music (a
+single, a music video or an upload) gets a folder of its own and shows up as a one-song album with its own
+cover.
 
 **Navidrome** groups albums by tags rather than folders, so any layout works there; it imports the `.m3u8`
 playlists from the music folder automatically.
