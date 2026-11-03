@@ -11,9 +11,17 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+      # Test on the Python of the Docker image, so a base image update is tested before it ships.
+      - name: Python version of the Docker image
+        id: python
+        run: |
+          version=$(sed -n 's/^FROM python:\([0-9][0-9.]*\).*/\1/p' Dockerfile)
+          if [ -z "$version" ]; then echo "::error::No 'FROM python:X.Y' line in the Dockerfile"; exit 1; fi
+          echo "Docker image uses Python $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.13"
+          python-version: ${{ steps.python.outputs.version }}
           cache: pip
           cache-dependency-path: requirements*.txt
       # Same static ffmpeg build as the Docker image (and no dependency on apt mirrors).
