@@ -74,7 +74,9 @@ def track_relpath(track: dict, layout: str, ext: str, playlist_folder: str | Non
         number = track.get("track_number")
         prefix = f"{int(number):02d} " if number else ""
         return f"{sanitize(album_artist)}/{sanitize(album)}/{prefix}{title}.{ext}"
-    return f"{sanitize(primary(artists))}/Singles/{title}.{ext}"
+    # no album on YouTube Music (a single, video or upload): it becomes its own one-song album, as a
+    # single release does, so music servers show it with its own cover instead of a shared "Singles"
+    return f"{sanitize(primary(artists))}/{title}/{title}.{ext}"
 
 
 def alternative_relpath(track: dict, relpath: str) -> str | None:
