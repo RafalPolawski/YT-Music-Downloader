@@ -191,3 +191,48 @@ def test_set_album_keeps_the_other_tags(audio_samples, tmp_path, fmt):
     tags = MutagenFile(path, easy=True)
     assert tags["album"] == ["Song"] and tags["title"] == ["Song"] and tags["artist"] == ["Band"]
     assert audio_info(path)["video_id"] == "v1"
+
+
+def test_video_thumbnails_fall_back_without_black_bars(monkeypatch):
+    import io
+
+    from PIL import Image
+
+    from ytmd import tagger
+
+    def jpeg(w, h):
+        buf = io.BytesIO()
+        Image.effect_noise((w, h), 60).convert("RGB").save(buf, "JPEG")
+        return buf.getvalue()
+
+    calls = []
+
+    class Response:
+        def __init__(self, status, content=b""):
+            self.status_code, self.content = status, content
+
+    def get(url, **kw):
+        calls.append(url.rsplit("/", 1)[1])
+        if url.endswith("sddefault.jpg"):
+            return Response(200, jpeg(640, 480))
+        return Response(503 if "hq720" in url else 404)
+
+    monkeypatch.setattr(tagger.requests, "get", get)
+    data = tagger.fetch_image("https://i.ytimg.com/vi/abc123/sddefault.jpg?sqp=x", 1200)
+    # a missing size is skipped at once, a server error is retried once
+    assert calls == ["maxresdefault.jpg", "hq720.jpg", "hq720.jpg", "sddefault.jpg"]
+    assert Image.open(io.BytesIO(data)).size == (640, 360)
+    assert Image.open(io.BytesIO(tagger.square_jpeg(data, 1200))).size == (360, 360)
+
+
+@pytest.mark.parametrize("fmt", ["opus", "m4a", "mp3"])
+def test_set_cover_keeps_the_other_tags(audio_samples, jpeg_bytes, tmp_path, fmt):
+    import shutil
+
+    from ytmd.tagger import TrackTags, audio_info, has_cover, set_cover, write_tags
+    path = tmp_path / f"song.{fmt}"
+    shutil.copy(audio_samples[fmt], path)
+    write_tags(path, TrackTags(title="Song", artists=["Band"], video_id="v1"), None)
+    assert not has_cover(path)
+    set_cover(path, jpeg_bytes)
+    assert has_cover(path) and audio_info(path)["video_id"] == "v1"

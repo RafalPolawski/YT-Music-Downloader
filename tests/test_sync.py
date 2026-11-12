@@ -474,3 +474,30 @@ def test_interrupted_reorganisation_is_recovered_on_start(harness, audio_samples
     SyncEngine(h.env, h.settings, h.db, client_factory=lambda s: h.client, download_fn=h.downloader)
     assert path.exists() and path.with_suffix(".lrc").exists()
     assert not h.env.tmp_dir.exists()
+
+
+def test_missing_embedded_cover_is_added_at_a_later_sync(harness, jpeg_bytes):
+    h = harness
+    basic_library(h)
+    h.engine.fetch_image = lambda url, size: None  # the image download fails
+    h.sync()
+    song = h.music / "Beta/Second Song/Second Song.opus"
+    assert "metadata_block_picture" not in OggOpus(song)
+    assert h.db.track("b1")["has_cover"] == 0
+
+    h.engine.fetch_image = lambda url, size: jpeg_bytes
+    h.downloader.calls.clear()
+    h.sync()
+    tags = OggOpus(song)
+    assert "metadata_block_picture" in tags and tags["title"] == ["Second Song"]
+    assert h.db.track("b1")["has_cover"] == 1 and h.downloader.calls == []
+    assert (song.parent / "cover.jpg").exists()
+
+
+def test_cover_state_of_older_downloads_is_checked_once(harness):
+    h = harness
+    basic_library(h)
+    h.sync()
+    h.db.update_track("a1", has_cover=None)  # as after an upgrade
+    h.sync()
+    assert h.db.track("a1")["has_cover"] == 1

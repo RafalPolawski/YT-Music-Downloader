@@ -37,7 +37,8 @@ from ytmd.library import (COVER_FILE, SIDECAR_EXTS, PathAllocator, Trash, move_f
                           alternative_relpath, link_or_copy,
                           write_if_changed)
 from ytmd.logs import purge_logs
-from ytmd.tagger import TrackTags, audio_info, fetch_image, set_album, square_jpeg, to_lrc, write_tags
+from ytmd.tagger import (TrackTags, audio_info, fetch_image, has_cover, set_album, set_cover, square_jpeg, to_lrc,
+                         write_tags)
 from ytmd.ytmusic import (LIKED_MUSIC_ID, VIDEO_TYPE_SONG, AuthError, YTMusicClient, auth_mode, make_client,
                           netscape_cookies_from_auth)
 
@@ -47,6 +48,7 @@ ALBUM_CACHE_SECONDS = 30 * 86400
 RETRY_BACKOFF = [3600, 3 * 3600, 12 * 3600, 24 * 3600]
 GIVE_UP_RETRY = 7 * 86400
 PLAYLIST_REFRESH_SECONDS = 300
+COVER_REPAIRS_PER_SYNC = 50  # files without embedded art that get another try per sync
 # Long download queues are split into runs of this length so playlist changes on
 # YouTube Music are still picked up while a big library is being downloaded.
 DOWNLOAD_BUDGET_SECONDS = 3600
@@ -838,11 +840,45 @@ class SyncEngine:
                 return self._cover_cache[key]
         raw = self.fetch_image(url, settings.cover_size)
         cover = square_jpeg(raw, settings.cover_size) if raw else None
+        if cover is None:  # not cached: the next track of the album (or the next sync) tries again
+            log.warning("Could not download the cover of '%s'", t["title"])
+            return None
         with self._cover_lock:
             if len(self._cover_cache) > 200:
                 self._cover_cache.clear()
             self._cover_cache[key] = cover
         return cover
+
+    def _repair_covers(self, settings: Settings) -> int:
+        """Embed the cover into files that have none, e.g. because its download failed back then."""
+        fixed = tried = 0
+        for t in self.db.downloaded_tracks():
+            if t["has_cover"] or self._cancel.is_set():
+                continue
+            path = self.music_dir / t["path"]
+            if not path.exists():
+                continue
+            if t["has_cover"] is None:  # downloaded by a version that did not keep track
+                found = has_cover(path)
+                self.db.update_track(t["video_id"], has_cover=int(found))
+                if found:
+                    continue
+            if tried >= COVER_REPAIRS_PER_SYNC:
+                continue
+            tried += 1
+            cover = self._cover(t, settings)
+            if not cover:
+                continue
+            try:
+                set_cover(path, cover)
+            except Exception as exc:
+                log.warning("Could not add the cover to %s: %s", t["path"], exc)
+                continue
+            self.db.update_track(t["video_id"], has_cover=1, size=path.stat().st_size)
+            fixed += 1
+        if fixed:
+            log.info("Added the missing cover to %d track(s)", fixed)
+        return fixed
 
     def _finalize(self, client, settings: Settings, t: dict, produced: Path, target: Path) -> None:
         """Tag the downloaded file, move it into the library, add lyrics and folder cover."""
@@ -860,6 +896,7 @@ class SyncEngine:
         )
         cover = self._cover(t, settings)
         write_tags(produced, tags, cover)
+        self.db.update_track(t["video_id"], has_cover=int(bool(cover)))
         if produced != target:
             if target.exists():
                 remove_with_sidecars(target)
@@ -905,6 +942,7 @@ class SyncEngine:
         self.state.update(phase="finishing", message="Cleaning up")
         summary.trash_purged = self.trash.purge(settings.trash_retention_days)
         purge_logs(self.env.log_dir, settings.log_retention_days)
+        self._repair_covers(settings)
         self._ensure_album_covers(settings)
         for t in self.db.tracks_by_status(dbm.TRASHED):
             if not t["trash_path"] or not (self.trash.root / t["trash_path"]).exists():

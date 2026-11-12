@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS tracks (
     lyrics_id       TEXT,
     remote_sig      TEXT,
     meta_resolved   INTEGER NOT NULL DEFAULT 0,
+    has_cover       INTEGER,
     status          TEXT NOT NULL DEFAULT 'pending',
     path            TEXT,
     size            INTEGER,
@@ -146,6 +147,9 @@ class Database:
         cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(playlist_tracks)")}
         if "set_video_id" not in cols:
             self._conn.execute("ALTER TABLE playlist_tracks ADD COLUMN set_video_id TEXT")
+        cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(tracks)")}
+        if "has_cover" not in cols:  # NULL = not checked yet
+            self._conn.execute("ALTER TABLE tracks ADD COLUMN has_cover INTEGER")
 
     def close(self) -> None:
         with self._lock:
