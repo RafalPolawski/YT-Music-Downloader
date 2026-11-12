@@ -37,6 +37,9 @@ class TrackTags:
 
 
 # ---------------------------------------------------------------------- images
+_LETTERBOXED = ("/sddefault.jpg", "/hqdefault.jpg")  # 4:3 frames with black bars above and below the picture
+
+
 def image_urls(url: str | None, size: int) -> list[str]:
     """Candidate URLs for the largest version of a YT Music thumbnail."""
     if not url:
@@ -46,19 +49,41 @@ def image_urls(url: str | None, size: int) -> list[str]:
         return [f"{base}=w{size}-h{size}-l90-rj", url]
     m = re.search(r"i\.ytimg\.com/vi(?:_webp)?/([\w-]+)/", url)
     if m:
-        vid = m.group(1)
-        return [f"https://i.ytimg.com/vi/{vid}/maxresdefault.jpg", f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"]
+        base = f"https://i.ytimg.com/vi/{m.group(1)}"
+        # the two 16:9 sizes do not exist for every video; the 4:3 ones always do
+        return [f"{base}/maxresdefault.jpg", f"{base}/hq720.jpg", f"{base}/sddefault.jpg", f"{base}/hqdefault.jpg"]
     return [url]
+
+
+def _without_bars(data: bytes) -> bytes:
+    """Cut the black bars off a 4:3 YouTube thumbnail, leaving the 16:9 picture."""
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            img = img.convert("RGB")
+            w, h = img.size
+            picture = round(w * 9 / 16)
+            if picture >= h:
+                return data
+            top = (h - picture) // 2
+            buf = io.BytesIO()
+            img.crop((0, top, w, top + picture)).save(buf, format="JPEG", quality=95)
+            return buf.getvalue()
+    except Exception:
+        return data
 
 
 def fetch_image(url: str | None, size: int) -> bytes | None:
     for candidate in image_urls(url, size):
-        try:
-            r = requests.get(candidate, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        for attempt in range(2):  # one retry on network errors and server hiccups
+            try:
+                r = requests.get(candidate, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+            except requests.RequestException as exc:
+                log.debug("Cover download failed for %s: %s", candidate, exc)
+                continue
             if r.status_code == 200 and len(r.content) > 1000:
-                return r.content
-        except requests.RequestException as exc:
-            log.debug("Cover download failed for %s: %s", candidate, exc)
+                return _without_bars(r.content) if candidate.endswith(_LETTERBOXED) else r.content
+            if r.status_code != 429 and r.status_code < 500:
+                break  # this size does not exist: try the next one
     return None
 
 
@@ -137,16 +162,20 @@ def _tag_vorbis(path: Path, tags: TrackTags, cover: bytes | None) -> None:
     if tags.video_id:
         audio[VIDEO_ID_TAG.lower()] = tags.video_id
     if cover:
-        pic = Picture()
-        pic.type = 3
-        pic.mime = "image/jpeg"
-        pic.desc = "Cover"
-        pic.data = cover
-        with Image.open(io.BytesIO(cover)) as img:
-            pic.width, pic.height = img.size
-        pic.depth = 24
-        audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
+        audio["metadata_block_picture"] = [_vorbis_picture(cover)]
     audio.save()
+
+
+def _vorbis_picture(cover: bytes) -> str:
+    pic = Picture()
+    pic.type = 3
+    pic.mime = "image/jpeg"
+    pic.desc = "Cover"
+    pic.data = cover
+    with Image.open(io.BytesIO(cover)) as img:
+        pic.width, pic.height = img.size
+    pic.depth = 24
+    return base64.b64encode(pic.write()).decode("ascii")
 
 
 def _tag_mp4(path: Path, tags: TrackTags, cover: bytes | None) -> None:
@@ -219,6 +248,40 @@ def set_album(path: Path, album: str, album_artists: list[str]) -> None:
             audio = ID3()
         audio.setall("TALB", [TALB(encoding=3, text=album)])
         audio.setall("TPE2", [TPE2(encoding=3, text=album_artists)])
+        audio.save(path, v2_version=4)
+    else:
+        raise ValueError(f"Unsupported audio format: {suffix}")
+
+
+def has_cover(path: Path) -> bool:
+    """Whether the file has embedded cover art."""
+    try:
+        suffix = path.suffix.lower()
+        if suffix in (".opus", ".ogg"):
+            return bool(OggOpus(path).get("metadata_block_picture"))
+        if suffix in (".m4a", ".mp4", ".aac"):
+            return bool(MP4(path).get("covr"))
+        if suffix == ".mp3":
+            return bool(ID3(path).getall("APIC"))
+    except Exception:
+        pass
+    return False
+
+
+def set_cover(path: Path, cover_jpeg: bytes) -> None:
+    """Embed cover art into an already tagged file, keeping its other tags."""
+    suffix = path.suffix.lower()
+    if suffix in (".opus", ".ogg"):
+        audio = OggOpus(path)
+        audio["metadata_block_picture"] = [_vorbis_picture(cover_jpeg)]
+        audio.save()
+    elif suffix in (".m4a", ".mp4", ".aac"):
+        audio = MP4(path)
+        audio["covr"] = [MP4Cover(cover_jpeg, imageformat=MP4Cover.FORMAT_JPEG)]
+        audio.save()
+    elif suffix == ".mp3":
+        audio = ID3(path)
+        audio.setall("APIC", [APIC(encoding=3, mime="image/jpeg", type=3, desc="Cover", data=cover_jpeg)])
         audio.save(path, v2_version=4)
     else:
         raise ValueError(f"Unsupported audio format: {suffix}")

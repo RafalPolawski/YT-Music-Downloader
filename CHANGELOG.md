@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- A song whose cover image failed to download stayed without embedded art for good, and one failure
+  left every later song of the same album without art in that sync. Cover downloads are now retried, and
+  files without embedded art get it at a later sync (up to 50 files per sync, nothing is downloaded again).
+- Covers of music videos could have black bars above and below the picture when YouTube has no
+  high-resolution thumbnail for the video. The bars are cut off now.
+
 ## [1.3.3] - 2026-11-03
 
 ### Fixed
